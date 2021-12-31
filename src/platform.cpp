@@ -69,58 +69,27 @@ time_t GetFileWriteTime(const char *file)
     return 0;
 }
 
-GameCode LoadGameCode(const char *path, const char *temp_path)
+GameCode LoadGameCode(const char *path)
 {
     GameCode result = {};
     result.last_file_time = GetFileWriteTime(path);
     char *error;
 
-    /*
-    FILE *fptr1, *fptr2;
-    char c;
-    fptr1 = fopen(path, "r");
-    if (fptr1 == NULL) {
-      printf("cannot open file %s\n", path);
-      exit(0);
-    }
-    fptr2 = fopen(temp_path, "w");
-    if (fptr2 == NULL) {
-      printf("cannot open file %s\n", temp_path);
-      exit(0);
-    }
-    c = fgetc(fptr1);
-    while (c != EOF) {
-      fputc(c, fptr2);
-      c = fgetc(fptr1);
-    }
-    fclose(fptr1);
-    fclose(fptr2);
-    */
-    
-    printf("dlopen %s\n", path);
     result.handle = dlopen(path, RTLD_LAZY);
     dlerror();    /* Clear any existing error */
     
     
     if(result.handle) {
-	printf("fetching GameInit\n");
-	fflush(stdout);
 	result.game_init = (GameInitFn *)dlsym(result.handle, "GameInit");
 	if ((error = dlerror()) != NULL)  {
-	  printf("err loading GameInit\n");
-	  fflush(stdout);
 	  fprintf(stderr, "%s\n", error);
 	  exit(EXIT_FAILURE);
 	}
-	printf("fetching GameUpdate\n");
-	fflush(stdout);
 	result.game_update = (GameUpdateFn *)dlsym(result.handle, "GameUpdate");
 	if ((error = dlerror()) != NULL)  {
 	    fprintf(stderr, "%s\n", error);
 	    exit(EXIT_FAILURE);
 	}
-	printf("fetching GameRender\n");
-	fflush(stdout);
 	result.game_render = (GameRenderFn *)dlsym(result.handle, "GameRender");
 	if ((error = dlerror()) != NULL)  {
 	    fprintf(stderr, "%s\n", error);
@@ -194,12 +163,8 @@ void GameLoop()
         if(new_dll_file_time > state.game_code.last_file_time) {
             UnloadGameCode(&state.game_code);
             SDL_Delay(1000);
-            state.game_code = LoadGameCode(GAME_LIB, GAME_LIB_TEMP);
-	    printf("reloaded gamedll\n");
-	    fflush(stdout);
+            state.game_code = LoadGameCode(GAME_LIB);
             state.game_code.game_init(state.game_memory, GetPlatformAPI());
-	    printf("game init success\n");
-	    fflush(stdout);
 	}
 
         SDL_Delay(1);
@@ -229,7 +194,7 @@ int main(int argc, char *argv[])
 
     state.game_memory = AllocateGameMemory();
     
-    state.game_code = LoadGameCode(GAME_LIB, GAME_LIB_TEMP);
+    state.game_code = LoadGameCode(GAME_LIB);
     state.game_code.game_init(state.game_memory, GetPlatformAPI());
     
     GameLoop();

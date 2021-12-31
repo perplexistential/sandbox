@@ -37,7 +37,7 @@ extern "C" GAME_UPDATE(GameUpdate)
       }
     }else {
       state->accel_x = 1;
-    }
+    } 
     if (state->accel_y < 0) {
       if (state->y < 0) {
 	state->accel_y = 1.0;
