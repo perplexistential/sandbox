@@ -54,7 +54,7 @@ void Die(const char *fmt, ...)
     va_end(va);
 
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-                             "Houston, we have a problem!",
+                             "game just died",
                              buffer, state.window);
     Quit();
 }
@@ -162,7 +162,7 @@ void GameLoop()
         time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
         if(new_dll_file_time > state.game_code.last_file_time) {
             UnloadGameCode(&state.game_code);
-            SDL_Delay(1000);
+            SDL_Delay(200);
             state.game_code = LoadGameCode(GAME_LIB);
             state.game_code.game_init(state.game_memory, GetPlatformAPI());
 	}
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
     }
 
     state.window
-        = SDL_CreateWindow("Awesome Game",
+        = SDL_CreateWindow("Perplexistential Sandbox",
                            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                            640, 480,
                            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
