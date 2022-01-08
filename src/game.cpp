@@ -53,15 +53,30 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
   return true;
 }
 
+#define CHARACTER_DEMO_ENABLED true
+#define CHARACTER_DEMO_SPRITE "as.png"
+
+struct Character
+{
+  unsigned int textureIndex;
+  BoundingBox bb;
+  bool walking;
+};
+
 struct GameState
 {
   GameMemory memory;
   PlatformAPI api;
 
   // Collision Demo
+  bool collisionDemoInitialized;
   BoundingBox boxes[COLLISION_DEMO_MAX_BOXES];
   BoundingBox wall;
   unsigned int boxCount;
+
+  // Animating and controlling a Character Demo
+  bool characterDemoInitialized;
+  Character character;
 };
 
 
@@ -76,7 +91,8 @@ extern "C" GAME_INIT(GameInit)
       state->memory = memory;
     }
 
-    if (COLLISION_DEMO_ENABLED) {
+    if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
+      state->collisionDemoInitialized = true;
       state->wall = {.x = 300.0f, .y = 100.0f, .width=50.0f, .height=200.0f};
       for (unsigned int c=0; c < COLLISION_DEMO_INITIAL_BOX_COUNT; c++) {
 	state->boxes[c] = {
@@ -92,24 +108,47 @@ extern "C" GAME_INIT(GameInit)
       }
       state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
     }
+
+    if (CHARACTER_DEMO_ENABLED) {
+      state->characterDemoInitialized = true;
+      state->character.textureIndex = state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE);
+      state->character.bb.x = 250;
+      state->character.bb.y = 350;
+      state->character.bb.width = 16;
+      state->character.bb.height = 32;
+    }
 }
 
 extern "C" GAME_UPDATE(GameUpdate)
 {
   for (unsigned int c=0; c < state->boxCount; c++){
-    if (state->boxes[c].x < 0 || state->boxes[c].x > 300) {
+    if (state->boxes[c].x < 0 || state->boxes[c].x > 640) {
       state->boxes[c].accel_x *= -1.0f;
-    } else if (checkCollision(&state->boxes[c], &state->wall)) {
-      state->boxes[c].accel_x *= -1.0f;
-    }
-    if (state->boxes[c].y < 0 || state->boxes[c].y > 300) {
+    } else if (state->boxes[c].y < 0 || state->boxes[c].y > 480) {
       state->boxes[c].accel_y *= -1.0f;
-    } else if (checkCollision(&state->boxes[c], &state->wall)) {
-      state->boxes[c].accel_y *= -1.0f;
-    }
+    } else {
+      if (checkCollision(&state->boxes[c], &state->wall)) {
+	state->boxes[c].accel_x *= -1.0f;
+      } else if (checkCollision(&state->boxes[c], &state->wall)) {
+	state->boxes[c].accel_y *= -1.0f;
+      }
+    }    
     state->boxes[c].x += state->boxes[c].accel_x * (dt * state->boxes[c].veloc_x);
     state->boxes[c].y += state->boxes[c].accel_y * (dt * state->boxes[c].veloc_y);
   }
+  
+  if (state->character.bb.x < 0 || state->character.bb.x > 300) {
+    state->character.bb.accel_x *= -1.0f;
+  } else if (checkCollision(&state->character.bb, &state->wall)) {
+    state->character.bb.accel_x *= -1.0f;
+  }
+  if (state->character.bb.y < 0 || state->character.bb.y > 300) {
+    state->character.bb.accel_y *= -1.0f;
+  } else if (checkCollision(&state->character.bb, &state->wall)) {
+    state->character.bb.accel_y *= -1.0f;
+  }
+  state->character.bb.x += state->character.bb.accel_x * (dt * state->character.bb.veloc_x);
+  state->character.bb.y += state->character.bb.accel_y * (dt * state->character.bb.veloc_y);
 }
 
 extern "C" GAME_RENDER(GameRender)
@@ -121,4 +160,11 @@ extern "C" GAME_RENDER(GameRender)
 			       state->boxes[c].width,
 			       state->boxes[c].height);
   }
+  
+  state->api.PlatformDrawTexture(state->character.textureIndex,
+				 state->character.bb.x,
+				 state->character.bb.y,
+				 state->character.bb.width,
+				 state->character.bb.height,
+				 113, 160, 16, 32);
 }

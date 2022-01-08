@@ -26,13 +26,29 @@ GameAllocateMemory(GameMemory *memory, size_t size)
   (type *)GameAllocateMemory(memory, sizeof(type))
 
 
-// Only one platform api call as an example. This draws a white box.
+// Demonstration boxes
 #define PLATFORM_DRAW_BOX(n) void n(float x, float y, float width, float height)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
 
+// Image and Sprite loading
+const unsigned int MAX_SURFACES = 3;
+const unsigned int MAX_FILENAME_LENGTH = 31;
+
+#define PLATFORM_ENSURE_IMAGE(n) unsigned int n(const char *filename)
+typedef PLATFORM_ENSURE_IMAGE(PlatformEnsureImageFn);
+
+#define PLATFORM_ENSURE_SPRITESHEET(n) unsigned int n(const char *filename)
+typedef PLATFORM_ENSURE_SPRITESHEET(PlatformEnsureSpritesheetFn);
+
+#define PLATFORM_DRAW_TEXTURE(n) void n(unsigned int textureIndex, float x, float y, float width, float height, int sprite_x, int sprite_y, int sprite_w, int sprite_h)
+typedef PLATFORM_DRAW_TEXTURE(PlatformDrawTextureFn);
+
 struct PlatformAPI
 {
-    PlatformDrawBoxFn *PlatformDrawBox;
+  PlatformDrawBoxFn *PlatformDrawBox;
+  PlatformEnsureImageFn *PlatformEnsureImage;
+  PlatformEnsureSpritesheetFn *PlatformEnsureSpritesheet;
+  PlatformDrawTextureFn *PlatformDrawTexture;
 };
 
 //

@@ -1,4 +1,8 @@
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_opengl_glext.h>
+#include <SDL2/SDL_surface.h>
 #include <assert.h>
+#include <cstddef>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,10 +18,11 @@
 #include <GL/glut.h>
 #include "shared.h"
 
-
 #define BUILD_DIR "build"
 #define GAME_LIB "build/libgame.so"
 #define GAME_LIB_TEMP "build/libgame_temp.so"
+
+#define IMAGES_DIR "assets/images"
 
 struct GameCode
 {
@@ -29,13 +34,21 @@ struct GameCode
     time_t last_file_time;
 };
 
+struct Texture
+{
+  char filename[MAX_FILENAME_LENGTH];
+  GLuint textureID;
+};
+
 static struct
 {
-    SDL_Window *window;
-    SDL_GLContext gl_context;
-    GameCode game_code;
-    GameMemory game_memory;
+  SDL_Window *window;
+  Texture textures[MAX_SURFACES];
+  SDL_GLContext gl_context;
+  GameCode game_code;
+  GameMemory game_memory;
 } state;
+
 
 void Quit()
 {
@@ -122,11 +135,83 @@ PLATFORM_DRAW_BOX(DrawBox)
     glEnd();
 }
 
+PLATFORM_ENSURE_IMAGE(EnsureImage)
+{
+  bool found = false;
+  int textureIndex = -1;
+  int imagePathLength = strlen(IMAGES_DIR)+strlen(filename) + 1;
+  char *imagePath = (char *) malloc(imagePathLength * sizeof(char));
+  sprintf(imagePath, "%s/%s", IMAGES_DIR, filename);
+
+  for(unsigned int i=0; i < MAX_SURFACES; i++){
+    if (textureIndex == -1 && state.textures[i].textureID == 0){
+      textureIndex = i;
+    }
+    if (0 == strncmp(state.textures[i].filename, filename, MAX_FILENAME_LENGTH)) {
+      found = true;
+      textureIndex = i;
+    }
+    if (found && -1 != textureIndex) {
+      break;
+    }
+  }
+  if (-1 == textureIndex) {
+    Die("no space left to load the image: %s", filename);
+  }
+  if (!found) {
+    SDL_Surface* newSurface = IMG_Load(imagePath);
+    glGenTextures(1, &state.textures[textureIndex].textureID);
+    glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
+    int mode = GL_RGB;
+    if (newSurface->format->BytesPerPixel == 4) {
+      mode = GL_RGBA;
+    }
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    strncpy(state.textures[textureIndex].filename, filename, MAX_FILENAME_LENGTH);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_INT, newSurface->pixels);
+  }
+  free(imagePath);  glLoadIdentity();
+
+
+  return textureIndex;
+}
+
+PLATFORM_ENSURE_SPRITESHEET(EnsureSpritesheet)
+{
+  printf("loading spritesheets is not yet implemented");
+  return -1;
+}
+
+PLATFORM_DRAW_TEXTURE(DrawTexture)
+{
+  printf("coordinates: %f, %f, %f, %f, %d, %d, %d, %d\n",
+	 x, y, width, height, sprite_x, sprite_y, sprite_w, sprite_h);
+  printf("texture: %d, %d\n", textureIndex, state.textures[textureIndex].textureID);
+  fflush(stdout);
+  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
+  glBegin(GL_QUADS);
+     glTexCoord2i(sprite_x, sprite_y);
+     glVertex3f(x, y, 0);
+     glTexCoord2i(sprite_x + sprite_w, sprite_y);
+     glVertex3f(x + width, y, 0);
+     glTexCoord2i(sprite_x + sprite_w, sprite_y + sprite_h);
+     glVertex3f(x + width, y + height, 0);
+     glTexCoord2i(sprite_x, sprite_y + sprite_h);
+     glVertex3f(x, y + height, 0);
+  glEnd();
+}
+
 PlatformAPI GetPlatformAPI()
 {
     PlatformAPI result = {};
 
     result.PlatformDrawBox = DrawBox;
+    result.PlatformDrawTexture = DrawTexture;
+    result.PlatformEnsureImage = EnsureImage;
     return result;
 }
 
@@ -144,60 +229,63 @@ GameMemory AllocateGameMemory()
 
 void GameLoop()
 {
-    for(;;) {
-        SDL_Event event;
-        while(SDL_PollEvent(&event)) {
-            if(event.type == SDL_QUIT) {
-                Quit();
-            }
-        }
-
-        state.game_code.game_update(1.0f/60.0f);
-
-        glClear(GL_COLOR_BUFFER_BIT);
-        state.game_code.game_render();
-        SDL_GL_SwapWindow(state.window);
-
-        // RELOAD
-        time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
-        if(new_dll_file_time > state.game_code.last_file_time) {
-            UnloadGameCode(&state.game_code);
-            SDL_Delay(200);
-            state.game_code = LoadGameCode(GAME_LIB);
-            state.game_code.game_init(state.game_memory, GetPlatformAPI());
-	}
-
-        SDL_Delay(1);
+  for(;;) {
+    SDL_Event event;
+    while(SDL_PollEvent(&event)) {
+      if(event.type == SDL_QUIT) {
+	Quit();
+      }
     }
+    
+    state.game_code.game_update(1.0f/60.0f);
+    
+    glClear(GL_COLOR_BUFFER_BIT);
+    state.game_code.game_render();
+    SDL_GL_SwapWindow(state.window);
+    
+    // RELOAD
+    time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
+    if(new_dll_file_time > state.game_code.last_file_time) {
+      UnloadGameCode(&state.game_code);
+      SDL_Delay(200);
+      state.game_code = LoadGameCode(GAME_LIB);
+      state.game_code.game_init(state.game_memory, GetPlatformAPI());
+    }
+    
+    SDL_Delay(1);
+  }
 }
 
 int main(int argc, char *argv[])
 {
-    if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
-        Die("Failed to initialize SDL2: %s\n", SDL_GetError());
-    }
-
-    state.window
-        = SDL_CreateWindow("Perplexistential Sandbox",
-                           SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                           640, 480,
-                           SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-
-    if(!state.window) {
-        Die("Failed to create window: %s\n", SDL_GetError());
-    }
-
-    fflush(stdout);
-    state.gl_context = SDL_GL_CreateContext(state.window);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    glOrtho(0.0f, 640.0f, 0.0f, 480.0f, 0.0f, 1.0f);
-
-    state.game_memory = AllocateGameMemory();
-    
-    state.game_code = LoadGameCode(GAME_LIB);
-    state.game_code.game_init(state.game_memory, GetPlatformAPI());
-    
-    GameLoop();
-
-    return 0;
+  if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+    Die("Failed to initialize SDL2: %s\n", SDL_GetError());
+  }
+  
+  if(IMG_Init(IMG_INIT_PNG) < 0) {
+    Die("Failed to initialize PNG support: %s\n", IMG_GetError());
+  }
+  
+  state.window
+    = SDL_CreateWindow("Perplexistential Sandbox",
+		       SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+		       640, 480,
+		       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+  
+  if(!state.window) {
+    Die("Failed to create window: %s\n", SDL_GetError());
+  }
+  
+  state.gl_context = SDL_GL_CreateContext(state.window);
+  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  glOrtho(0.0f, 640.0f, 0.0f, 480.0f, 0.0f, 1.0f);
+  
+  state.game_memory = AllocateGameMemory();
+  
+  state.game_code = LoadGameCode(GAME_LIB);
+  state.game_code.game_init(state.game_memory, GetPlatformAPI());
+  
+  GameLoop();
+  
+  return 0;
 }
