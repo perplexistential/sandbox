@@ -1,6 +1,4 @@
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_opengl_glext.h>
-#include <SDL2/SDL_surface.h>
+#include <SDL2/SDL_stdinc.h>
 #include <assert.h>
 #include <cstddef>
 #include <stdarg.h>
@@ -14,9 +12,15 @@
 #include <sys/stat.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL_image.h>
+// #include <SDL2/SDL_opengl_glext.h>
+#include <SDL2/SDL_surface.h>
 
 #include <GL/glut.h>
 #include "shared.h"
+
+#define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
 
 #define BUILD_DIR "build"
 #define GAME_LIB "build/libgame.so"
@@ -127,7 +131,7 @@ void UnloadGameCode(GameCode *game_code)
 PLATFORM_DRAW_BOX(DrawBox)
 {
     glBegin(GL_QUADS);
-        glColor3f(1.0f, 1.0f, 1.0f);
+	glColor4f(r, g, b, a);
         glVertex2f(x, y);
         glVertex2f(x+width, y);
         glVertex2f(x+width, y+height);
@@ -159,23 +163,31 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
     Die("no space left to load the image: %s", filename);
   }
   if (!found) {
-    SDL_Surface* newSurface = IMG_Load(imagePath);
+    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
     glGenTextures(1, &state.textures[textureIndex].textureID);
     glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    SDL_Surface* newSurface = IMG_Load(imagePath);
+    if (!newSurface) {
+      Die("Failed to load the image: %s", IMG_GetError());
+    }
     int mode = GL_RGB;
     if (newSurface->format->BytesPerPixel == 4) {
       mode = GL_RGBA;
     }
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D,
+		 0, GL_RGBA,
+		 newSurface->w, newSurface->h,
+		 0, GL_RGBA,
+		 GL_UNSIGNED_BYTE, newSurface->pixels);
+    
     strncpy(state.textures[textureIndex].filename, filename, MAX_FILENAME_LENGTH);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_INT, newSurface->pixels);
   }
-  free(imagePath);  glLoadIdentity();
-
-
+  free(imagePath);
   return textureIndex;
 }
 
@@ -187,21 +199,17 @@ PLATFORM_ENSURE_SPRITESHEET(EnsureSpritesheet)
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
 {
-  printf("coordinates: %f, %f, %f, %f, %d, %d, %d, %d\n",
-	 x, y, width, height, sprite_x, sprite_y, sprite_w, sprite_h);
-  printf("texture: %d, %d\n", textureIndex, state.textures[textureIndex].textureID);
-  fflush(stdout);
-  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
   glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
   glBegin(GL_QUADS);
-     glTexCoord2i(sprite_x, sprite_y);
-     glVertex3f(x, y, 0);
-     glTexCoord2i(sprite_x + sprite_w, sprite_y);
-     glVertex3f(x + width, y, 0);
-     glTexCoord2i(sprite_x + sprite_w, sprite_y + sprite_h);
-     glVertex3f(x + width, y + height, 0);
-     glTexCoord2i(sprite_x, sprite_y + sprite_h);
-     glVertex3f(x, y + height, 0);
+     glColor4f(1.0f, 0, 1.0f, 1.0f);
+     glTexCoord2i(sprite_x, sprite_y); glVertex3f(x, y, 0);
+     glTexCoord2i(sprite_x + sprite_w, sprite_y); glVertex3f(x + width, y, 0);
+     glTexCoord2i(sprite_x + sprite_w, sprite_y + sprite_h); glVertex3f(x + width, y + height, 0);
+     glTexCoord2i(sprite_x, sprite_y + sprite_h); glVertex3f(x, y + height, 0);
+     //glTexCoord2i(0, 0); glVertex3f(x, y, 0);
+     //glTexCoord2i(1, 0); glVertex3f(x + width, y, 0);
+     //glTexCoord2i(1, 1); glVertex3f(x + width, y + height, 0);
+     //glTexCoord2i(0, 1); glVertex3f(x, y + height, 0);
   glEnd();
 }
 
@@ -249,7 +257,7 @@ void GameLoop()
       UnloadGameCode(&state.game_code);
       SDL_Delay(200);
       state.game_code = LoadGameCode(GAME_LIB);
-      state.game_code.game_init(state.game_memory, GetPlatformAPI());
+      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
     }
     
     SDL_Delay(1);
@@ -269,22 +277,25 @@ int main(int argc, char *argv[])
   state.window
     = SDL_CreateWindow("Perplexistential Sandbox",
 		       SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-		       640, 480,
+		       SCREEN_WIDTH, SCREEN_HEIGHT,
 		       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
   
   if(!state.window) {
     Die("Failed to create window: %s\n", SDL_GetError());
   }
-  
+
+  // using OpenGL render context
   state.gl_context = SDL_GL_CreateContext(state.window);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  glOrtho(0.0f, 640.0f, 0.0f, 480.0f, 0.0f, 1.0f);
-  
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(0.0f, 1.0f*SCREEN_WIDTH, 0.0f, 1.0f*SCREEN_HEIGHT, 0.0f, 1.0f);
+
+  // game state init
   state.game_memory = AllocateGameMemory();
-  
   state.game_code = LoadGameCode(GAME_LIB);
-  state.game_code.game_init(state.game_memory, GetPlatformAPI());
-  
+  state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+
   GameLoop();
   
   return 0;

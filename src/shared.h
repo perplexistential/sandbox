@@ -27,7 +27,7 @@ GameAllocateMemory(GameMemory *memory, size_t size)
 
 
 // Demonstration boxes
-#define PLATFORM_DRAW_BOX(n) void n(float x, float y, float width, float height)
+#define PLATFORM_DRAW_BOX(n) void n(float x, float y, float width, float height, float r, float g, float b, float a)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
 
 // Image and Sprite loading
@@ -56,7 +56,7 @@ struct PlatformAPI
 // signature across various places easier.
 //
 
-#define GAME_INIT(n) void n(GameMemory memory, PlatformAPI api)
+#define GAME_INIT(n) void n(GameMemory memory, PlatformAPI api, int screen_w, int screen_h)
 typedef GAME_INIT(GameInitFn);
 
 #define GAME_UPDATE(n) void n(float dt)
