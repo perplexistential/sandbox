@@ -163,14 +163,6 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
     Die("no space left to load the image: %s", filename);
   }
   if (!found) {
-    glEnable(GL_TEXTURE_2D);
-    glEnable(GL_BLEND);
-    glGenTextures(1, &state.textures[textureIndex].textureID);
-    glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     SDL_Surface* newSurface = IMG_Load(imagePath);
     if (!newSurface) {
       Die("Failed to load the image: %s", IMG_GetError());
@@ -179,12 +171,22 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
     if (newSurface->format->BytesPerPixel == 4) {
       mode = GL_RGBA;
     }
+    glGenTextures(1, &state.textures[textureIndex].textureID);
+    glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
     glTexImage2D(GL_TEXTURE_2D,
 		 0, GL_RGBA,
 		 newSurface->w, newSurface->h,
 		 0, GL_RGBA,
 		 GL_UNSIGNED_BYTE, newSurface->pixels);
-    
+
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     strncpy(state.textures[textureIndex].filename, filename, MAX_FILENAME_LENGTH);
   }
   free(imagePath);
@@ -199,18 +201,37 @@ PLATFORM_ENSURE_SPRITESHEET(EnsureSpritesheet)
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
 {
-  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
+  float texW, texH;
+  glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
+  glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
+
+  float texCoordX0;
+  float texCoordX1 = sprite_w;
+  float texCoordY0;
+  float texCoordY1 = sprite_h;
+  if (sprite_x != 0 && sprite_x != texW) {
+    texCoordX0 = sprite_x / texW;
+    texCoordX1 = (sprite_x + sprite_w) / texW;
+  }
+  if (sprite_y != 0 && sprite_y != texH) {
+    texCoordY0 = sprite_y / texH;
+    texCoordY1 = (sprite_y + sprite_h) / texH;
+  }
+  
+  glEnable(GL_TEXTURE_2D);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  
   glBegin(GL_QUADS);
      glColor4f(1.0f, 0, 1.0f, 1.0f);
-     glTexCoord2i(sprite_x, sprite_y); glVertex3f(x, y, 0);
-     glTexCoord2i(sprite_x + sprite_w, sprite_y); glVertex3f(x + width, y, 0);
-     glTexCoord2i(sprite_x + sprite_w, sprite_y + sprite_h); glVertex3f(x + width, y + height, 0);
-     glTexCoord2i(sprite_x, sprite_y + sprite_h); glVertex3f(x, y + height, 0);
-     //glTexCoord2i(0, 0); glVertex3f(x, y, 0);
-     //glTexCoord2i(1, 0); glVertex3f(x + width, y, 0);
-     //glTexCoord2i(1, 1); glVertex3f(x + width, y + height, 0);
-     //glTexCoord2i(0, 1); glVertex3f(x, y + height, 0);
+     glTexCoord2f(texCoordX0, texCoordY0); glVertex3f(x, y, 0);
+     glTexCoord2f(texCoordX1, texCoordY0); glVertex3f(x + width, y, 0);
+     glTexCoord2f(texCoordX1, texCoordY1); glVertex3f(x + width, y + height, 0);
+     glTexCoord2f(texCoordX0, texCoordY1); glVertex3f(x, y + height, 0);
   glEnd();
+
+  glDisable(GL_BLEND);
+  glDisable(GL_TEXTURE_2D);
 }
 
 PlatformAPI GetPlatformAPI()

@@ -153,13 +153,14 @@ extern "C" GAME_INIT(GameInit)
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
   }
 
+  state->characterDemoInitialized = false;
   if (CHARACTER_DEMO_ENABLED) {
     state->characterDemoInitialized = true;
     state->character.textureIndex = state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE);
-    state->character.bb.x = 250;
-    state->character.bb.y = 350;
-    state->character.bb.width = 16;
-    state->character.bb.height = 32;
+    state->character.bb.x = 150;
+    state->character.bb.y = 250;
+    state->character.bb.width = 64;
+    state->character.bb.height = 128;
   }
 }
 
