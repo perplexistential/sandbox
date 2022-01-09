@@ -224,10 +224,10 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
   
   glBegin(GL_QUADS);
      glColor4f(1.0f, 0, 1.0f, 1.0f);
-     glTexCoord2f(texCoordX0, texCoordY0); glVertex3f(x, y, 0);
-     glTexCoord2f(texCoordX1, texCoordY0); glVertex3f(x + width, y, 0);
-     glTexCoord2f(texCoordX1, texCoordY1); glVertex3f(x + width, y + height, 0);
-     glTexCoord2f(texCoordX0, texCoordY1); glVertex3f(x, y + height, 0);
+     glTexCoord2f(texCoordX0, texCoordY1); glVertex3f(x, y, 0);
+     glTexCoord2f(texCoordX1, texCoordY1); glVertex3f(x + width, y, 0);
+     glTexCoord2f(texCoordX1, texCoordY0); glVertex3f(x + width, y + height, 0);
+     glTexCoord2f(texCoordX0, texCoordY0); glVertex3f(x, y + height, 0);
   glEnd();
 
   glDisable(GL_BLEND);
