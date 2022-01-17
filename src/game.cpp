@@ -24,7 +24,7 @@ struct BoundingBox
   float accel_a;
 };
 
-#define COLOR_SHIFT_RATE 0.1
+#define COLOR_SHIFT_RATE 0.2
 
 #define COLLISION_DEMO_ENABLED true
 #define COLLISION_DEMO_MAX_BOXES 11
@@ -67,13 +67,51 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
 }
 
 #define CHARACTER_DEMO_ENABLED true
-#define CHARACTER_DEMO_SPRITE "as.png"
+#define CHARACTER_DEMO_SPRITE "as_.png"
 
 struct Character
 {
   unsigned int textureIndex;
   BoundingBox bb;
   bool walking;
+  bool falling;
+  bool facing_right;
+  bool crouched;
+};
+
+#define CONTROLLER_DEMO_ENABLED true
+
+enum {
+  CONTROLLER_UP = 0,
+  CONTROLLER_DOWN,
+  CONTROLLER_LEFT,
+  CONTROLLER_RIGHT,
+  CONTROLLER_RUN,
+  CONTROLLER_FIRE,
+  CONTROLLER_MENU,
+  CONTROLLER_CONTEXT_MENU,
+  CONTROLLER_PAUSE,
+  CONTROLLER_TRIGGER_L,
+  CONTROLLER_TRIGGER_R,
+};
+
+struct Controller
+{
+  int up, down, left, right;
+  int jump;
+  int run;
+  int fire;
+  int menu;
+  int context_menu;
+  int pause;
+  int trigger_l, trigger_r;
+
+  int menu_open;
+
+  float pointer_x, pointer_y;
+
+  float action_queue_timer;
+  int action_queue[10];
 };
 
 struct GameState
@@ -94,6 +132,10 @@ struct GameState
   // Animating and controlling a Character Demo
   bool characterDemoInitialized;
   Character character;
+  
+  // User Input Demo
+  bool keyboardDemoInitialized;
+  Controller controller;
 };
 
 
@@ -102,22 +144,22 @@ static GameState *state;
 BoundingBox newDemoBB(unsigned int c)
 {
   return {
-	.accel_x = c % 2 ? -1.0f : 1.0f,
-	.accel_y = c % 2 ? 1.0f : -1.0f,
-	.x = 3.0f * c,
-	.y = 35 + 1.0f * c,
-	.width = 50.0f,
-	.height = 50.0f,
-	.veloc_x = 10 + 30.0f * c,
-	.veloc_y = 10 + 20.0f * c,
-	.r=0.1f * (rand() % 9), 
-	.accel_r=1.0f,
-	.g=0.1f * (rand() % 9), 
-	.accel_g=1.0f,
-	.b=0.1f * (rand() % 9), 
-	.accel_b=1.0f,
-	.a=0.1f * (rand() % 5),
-	.accel_a=1.0f,
+    .accel_x = c % 2 ? -1.0f : 1.0f,
+    .accel_y = c % 2 ? 1.0f : -1.0f,
+    .x = 3.0f * c,
+    .y = 35 + 1.0f * c,
+    .width = 50.0f,
+    .height = 50.0f,
+    .veloc_x = 10 + 30.0f * c,
+    .veloc_y = 10 + 20.0f * c,
+    .r=0.1f * (rand() % 9), 
+    .accel_r=1.0f,
+    .g=0.1f * (rand() % 9), 
+    .accel_g=1.0f,
+    .b=0.1f * (rand() % 9), 
+    .accel_b=1.0f,
+    .a=0.1f * (rand() % 5),
+    .accel_a=1.0f,
   };
 }
 
@@ -141,7 +183,7 @@ extern "C" GAME_INIT(GameInit)
   }
   state->screen_w = screen_w;
   state->screen_h = screen_h;
-
+  
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
     srand(37);
     state->collisionDemoInitialized = true;
@@ -152,7 +194,7 @@ extern "C" GAME_INIT(GameInit)
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
   }
-
+  
   state->characterDemoInitialized = false;
   if (CHARACTER_DEMO_ENABLED) {
     state->characterDemoInitialized = true;
@@ -164,16 +206,20 @@ extern "C" GAME_INIT(GameInit)
   }
 }
 
+extern "C" GAME_KEYBOARD_INPUT(GameKeyboardInput)
+{
+  
+}
+
 float speed(float accel, float dt, float velocity)
 {
   return accel * (dt * velocity);
 }
 
-
 void shiftColor(float* c, float* accel, float dt)
 {
   *c += *accel * (dt * COLOR_SHIFT_RATE * (rand() % 9));
-  if (*c >= 0.9f || *c <= 0.1f) 
+  if (*c >= 0.7f || *c <= 0.0f) 
     *accel *= -1.0f;
 }
 
