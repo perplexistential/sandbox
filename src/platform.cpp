@@ -353,58 +353,6 @@ PLATFORM_DRAW_QUAD(DrawQuad)
     glEnd();
 }
 
-#define VERTEX_LENGTH_2D 2
-#define COLOR_LENGTH_2D 4
-
-#define VERTEX_VB 0
-#define COLOR_VB 1
-//#define TEXCOORD_VB 2
-#define BUFFER_COUNT 2
-
-const char* vertex_shader =
-  "layout(location = 0) in vec2 vertexPosition;"
-  "layout(location = 1) in vec4 vertexColor;"
-  "out vec4 colour;"
-  "void main() {"
-  "  vertexColor = vec4(vertexColor.rgba);"
-  "  gl_Position = vec4(vertexPosition.xy, 0, 1.0);"
-  "}";
-  
-const char* fragment_shader =
-  "#version 400\n"
-  "out vec4 frag_color;"
-  "in vec4 vertexColor;"
-  "void main() {"
-  "  frag_color = vec4(vertexColor);"
-  "}";
-
-PLATFORM_DRAW_BATCH(DrawBatch)
-{
-  GLuint attribCount = 0;
-  
-  glGenVertexArrays(1, &state.vao);
-  glGenBuffers(1, &state.vertex_buffer);
-  glGenBuffers(1, &state.colors_buffer);
-  
-  glBindVertexArray(state.vao);
-
-  glBindBuffer(GL_ARRAY_BUFFER, state.vertex_buffer);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*VERTEX_LENGTH_2D*4*length, vertices, GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float)*VERTEX_LENGTH_2D, (void *)0);
-  glEnableVertexAttribArray(attribCount++);
-
-  if (colors) {
-    glBindBuffer(GL_ARRAY_BUFFER, state.colors_buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*COLOR_LENGTH_2D*4*length, colors, GL_STATIC_DRAW);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(float)*COLOR_LENGTH_2D, (void *)0);
-    glEnableVertexAttribArray(attribCount++);
-  }
-  
-  glUseProgram(state.vertex_color_program);
-  glBindVertexArray(state.vao);
-  glDrawArrays(GL_QUADS, 0, length);
-}
-
 PLATFORM_ENSURE_IMAGE(EnsureImage)
 {
   bool found = false;
@@ -532,7 +480,6 @@ PlatformAPI GetPlatformAPI()
     result.PlatformEnsureImage = EnsureImage;
     result.PlatformQuit = QuitGame;
     result.PlatformCreateWindow = CreateWindow;
-    result.PlatformDrawBatch = DrawBatch;
     return result;
 }
 
@@ -958,30 +905,12 @@ int main(int argc, char *argv[])
   state.window_count = 0;
   CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-  glutInit(&argc, argv);
-  
-  GLenum glewError = glewInit(); 
-  if (GLEW_OK != glewError) {
-    Die("Error initializing GLEW: %s\n", glewGetErrorString(glewError));
-  }
-
   // get version info
   const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
   const GLubyte* version = glGetString(GL_VERSION); // version as a string
   printf("Renderer: %s\n", renderer);
   printf("OpenGL version supported %s\n", version);
 
-  state.vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(state.vertex_shader, 1, &vertex_shader, NULL);
-  glCompileShader(state.vertex_shader);
-  state.fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(state.fragment_shader, 1, &fragment_shader, NULL);
-  glCompileShader(state.fragment_shader);
-  state.vertex_color_program = glCreateProgram();
-  glAttachShader(state.vertex_color_program, state.fragment_shader);
-  glAttachShader(state.vertex_color_program, state.vertex_shader);
-  glLinkProgram(state.vertex_color_program);
-  
   // game state init
   state.game_memory = AllocateGameMemory();
   state.game_code = LoadGameCode(GAME_LIB);

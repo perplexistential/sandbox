@@ -67,11 +67,6 @@ typedef PLATFORM_QUIT(PlatformQuitFn);
          uint32_t height)
 typedef PLATFORM_CREATE_WINDOW(PlatformCreateWindowFn);
 
-#define PLATFORM_DRAW_BATCH(n)                                                 \
-  void n(uint8_t length, const float *vertices, const float *colors,           \
-         const float *texture_coords)
-typedef PLATFORM_DRAW_BATCH(PlatformDrawBatchFn);
-
 struct PlatformAPI
 {
   PlatformDrawBoxFn *PlatformDrawBox;
@@ -81,7 +76,6 @@ struct PlatformAPI
   PlatformDrawTextureFn *PlatformDrawTexture;
   PlatformQuitFn *PlatformQuit;
   PlatformCreateWindowFn *PlatformCreateWindow;
-  PlatformDrawBatchFn *PlatformDrawBatch;
 };
 
 //
