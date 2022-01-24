@@ -465,8 +465,8 @@ GameMemory AllocateGameMemory()
 {
     GameMemory result = {};
 
-    result.ptr = (uint8_t *)calloc(1, 1024);
-    result.size = 1024;
+    result.ptr = (uint8_t *)calloc(1, 120000000);
+    result.size = 120000000;
     result.cursor = result.ptr;
 
     return result;
@@ -877,7 +877,6 @@ int main(int argc, char *argv[])
 
   state.window_count = 0;
   CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
-  
   
   // game state init
   state.game_memory = AllocateGameMemory();

@@ -27,8 +27,8 @@ struct BoundingBox
 #define COLOR_SHIFT_RATE 0.2
 
 #define COLLISION_DEMO_ENABLED true
-#define COLLISION_DEMO_MAX_BOXES 11
-#define COLLISION_DEMO_INITIAL_BOX_COUNT 11
+#define COLLISION_DEMO_MAX_BOXES 100000
+#define COLLISION_DEMO_INITIAL_BOX_COUNT 100000
 
 bool checkCollision(BoundingBox *a, BoundingBox *b){
   // the sides of the rects
@@ -144,21 +144,23 @@ static GameState *state;
 BoundingBox newDemoBB(unsigned int c)
 {
   return {
-    .accel_x = c % 2 ? -1.0f : 1.0f,
-    .accel_y = c % 2 ? 1.0f : -1.0f,
-    .x = 3.0f * c,
-    .y = 35 + 1.0f * c,
+    .accel_x = c % 2 == 0 ? -1.0f : 1.0f,
+    .accel_y = c % 2 == 0 ? 1.0f : -1.0f,
+    .x = 50.0f + 1.0f * (rand() % (state->screen_w - 100)),
+    .y = 50.0f + 1.0f * (rand() % (state->screen_h - 100)),
+    //.x = 60.0f,
+    //.y = 60.0f,
     .width = 50.0f,
     .height = 50.0f,
-    .veloc_x = 10 + 30.0f * c,
-    .veloc_y = 10 + 20.0f * c,
+    .veloc_x = 10 + 0.01f * c,
+    .veloc_y = 10 + 0.01f * c,
     .r=0.1f * (rand() % 9), 
     .accel_r=1.0f,
     .g=0.1f * (rand() % 9), 
     .accel_g=1.0f,
     .b=0.1f * (rand() % 9), 
     .accel_b=1.0f,
-    .a=0.1f * (rand() % 5),
+    .a=0.5f + 0.1f * (rand() % 5),
     .accel_a=1.0f,
   };
 }
@@ -183,9 +185,10 @@ extern "C" GAME_INIT(GameInit)
   }
   state->screen_w = screen_w;
   state->screen_h = screen_h;
-  
+
+  state->collisionDemoInitialized = false;
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
-    srand(37);
+    //srand(37);
     state->collisionDemoInitialized = true;
     state->wall = newBB(300.0f, 100.0f, 50.0f, 200.0f);
     state->ground = newBB(0.0f, 0.0f, 1.0f*state->screen_w, 30.0f);
@@ -203,6 +206,8 @@ extern "C" GAME_INIT(GameInit)
     state->character.bb.y = 250;
     state->character.bb.width = 64;
     state->character.bb.height = 128;
+    state->character.bb.veloc_x = 5.0f;
+    state->character.bb.veloc_y = 5.0f;
   }
 }
 
@@ -219,7 +224,7 @@ float speed(float accel, float dt, float velocity)
 void shiftColor(float* c, float* accel, float dt)
 {
   *c += *accel * (dt * COLOR_SHIFT_RATE * (rand() % 9));
-  if (*c >= 0.7f || *c <= 0.0f) 
+  if (*c >= 0.7f || *c <= 0.2f) 
     *accel *= -1.0f;
 }
 
