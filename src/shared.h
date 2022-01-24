@@ -37,6 +37,13 @@ GameAllocateMemory(GameMemory *memory, size_t size)
          float b, float a)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
 
+// Demo boxes as a quad
+#define PLATFORM_DRAW_QUAD(n)                                                   \
+  void n(float bl_x, float bl_y, float br_x, float br_y, float ur_x,           \
+         float ur_y, float ul_x, float ul_y, float r, float g, float b,        \
+         float a)
+typedef PLATFORM_DRAW_QUAD(PlatformDrawQuadFn);
+
 // Image and Sprite loading
 const unsigned int MAX_SURFACES = 3;
 const unsigned int MAX_FILENAME_LENGTH = 31;
@@ -58,17 +65,23 @@ typedef PLATFORM_QUIT(PlatformQuitFn);
 #define PLATFORM_CREATE_WINDOW(n)                                              \
   void n(const char *title, uint32_t x, uint32_t y, uint32_t width,            \
          uint32_t height)
-
 typedef PLATFORM_CREATE_WINDOW(PlatformCreateWindowFn);
+
+#define PLATFORM_DRAW_BATCH(n)                                                 \
+  void n(uint8_t length, const float *vertices, const float *colors,           \
+         const float *texture_coords)
+typedef PLATFORM_DRAW_BATCH(PlatformDrawBatchFn);
 
 struct PlatformAPI
 {
   PlatformDrawBoxFn *PlatformDrawBox;
+  PlatformDrawQuadFn *PlatformDrawQuad;
   PlatformEnsureImageFn *PlatformEnsureImage;
   PlatformEnsureSpritesheetFn *PlatformEnsureSpritesheet;
   PlatformDrawTextureFn *PlatformDrawTexture;
   PlatformQuitFn *PlatformQuit;
   PlatformCreateWindowFn *PlatformCreateWindow;
+  PlatformDrawBatchFn *PlatformDrawBatch;
 };
 
 //

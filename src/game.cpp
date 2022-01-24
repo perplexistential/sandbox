@@ -1,36 +1,79 @@
 #include <bits/types/time_t.h>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "shared.h"
 
-struct BoundingBox
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+
+struct Rect
 {
-  float accel_x;
-  float accel_y;
   float x;
   float y;
   float width;
   float height;
+};
+
+struct Color
+{
+  float r;
+  float g;
+  float b;
+  float a;
+};
+
+struct Vertex
+{
+  float x;
+  float y;
+};
+
+struct Quad
+{
+  Vertex ul;
+  Vertex ur;
+  Vertex br;
+  Vertex bl;
+};
+
+Quad screenQuad = {
+  .ul = {0.0f, 1.0f},
+  .ur = {1.0f, 1.0f},
+  .br = {1.0f, 0.0f},
+  .bl = {0.0f, 0.0f},
+};
+
+struct SpriteFrame
+{
+
+};
+
+
+struct ColorBox
+{
   float veloc_x;
   float veloc_y;
-  float r;
+  float accel_x;
+  float accel_y;
   float accel_r;
-  float g;
   float accel_g;
-  float b;
   float accel_b;
-  float a;
   float accel_a;
 };
 
 #define COLOR_SHIFT_RATE 0.2
 
 #define COLLISION_DEMO_ENABLED true
-#define COLLISION_DEMO_MAX_BOXES 11
-#define COLLISION_DEMO_INITIAL_BOX_COUNT 11
+#define COLLISION_DEMO_MAX_BOXES 500000
+#define COLLISION_DEMO_INITIAL_BOX_COUNT (uint32_t)500000
+#define COLLISION_DEMO_BOX_LENGTH 50.0f
 
-bool checkCollision(BoundingBox *a, BoundingBox *b){
+bool checkCollision(Quad *a, Quad *b)
+{
   // the sides of the rects
   int leftA, leftB;
   int rightA, rightB;
@@ -38,41 +81,50 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
   int bottomA, bottomB;
 
   // Calculate the sides of "A"
-  leftA = a->x;
-  rightA = a->x + a->width;
-  topA = a->y;
-  bottomA = a->y + a->height;
+  leftA = a->bl.x;
+  rightA = a->br.x;
+  topA = a->bl.y;
+  bottomA = a->ul.y;
 
   // Calculate the sides of "B"
-  leftB = b->x;
-  rightB = b->x + b->width;
-  topB = b->y;
-  bottomB = b->y + b->height;
-
-  // If any of the sides from A are outside of Bool
+  leftB = b->bl.x;
+  rightB = b->br.x;
+  topB = b->bl.y;
+  bottomB = b->ul.y;
+  
+  
+  // If any of the sides from A are outside of B
   if (bottomA <= topB) {
+  //if (a->br.y <= b->ur.y) {
     return false;
   }
   if (topA >= bottomB) {
+  //if (a->ur.y >= b->br.y) {
     return false;
   }
   if (rightA <= leftB) {
+  //if (a->br.x <= b->bl.x) {
     return false;
   }
   if (leftA >= rightB) {
+  //if (a->bl.x >= b->br.x) {
     return false;
   }
   // Collision!
   return true;
 }
 
-#define CHARACTER_DEMO_ENABLED true
+#define CHARACTER_DEMO_ENABLED false
 #define CHARACTER_DEMO_SPRITE "as_.png"
 
 struct Character
 {
   unsigned int textureIndex;
-  BoundingBox bb;
+  Quad bb;
+  float accel_x;
+  float accel_y;
+  float veloc_x;
+  float veloc_y;
   bool walking;
   bool falling;
   bool facing_right;
@@ -124,10 +176,15 @@ struct GameState
   
   // Collision Demo
   bool collisionDemoInitialized;
-  BoundingBox boxes[COLLISION_DEMO_MAX_BOXES];
-  BoundingBox wall;
-  BoundingBox ground;
-  unsigned int boxCount;
+  ColorBox boxes[COLLISION_DEMO_MAX_BOXES];
+  Quad box_rects[COLLISION_DEMO_MAX_BOXES];
+  Color box_color[COLLISION_DEMO_MAX_BOXES*4];
+  //Vertex box_translation[COLLISION_DEMO_MAX_BOXES];
+  Quad wall;
+  Color wallColor;
+  Quad ground;
+  Color groundColor;
+  uint32_t boxCount;
 
   // Animating and controlling a Character Demo
   bool characterDemoInitialized;
@@ -141,37 +198,68 @@ struct GameState
 
 static GameState *state;
 
-BoundingBox newDemoBB(unsigned int c)
+Rect newDemoBB()
 {
   return {
-    .accel_x = c % 2 ? -1.0f : 1.0f,
-    .accel_y = c % 2 ? 1.0f : -1.0f,
-    .x = 3.0f * c,
-    .y = 35 + 1.0f * c,
-    .width = 50.0f,
-    .height = 50.0f,
-    .veloc_x = 10 + 30.0f * c,
-    .veloc_y = 10 + 20.0f * c,
-    .r=0.1f * (rand() % 9), 
-    .accel_r=1.0f,
-    .g=0.1f * (rand() % 9), 
-    .accel_g=1.0f,
-    .b=0.1f * (rand() % 9), 
-    .accel_b=1.0f,
-    .a=0.1f * (rand() % 5),
-    .accel_a=1.0f,
+    .x = 1.0f * (rand() % state->screen_w),
+    .y = 1.0f * (rand() % state->screen_h),
+    .width = COLLISION_DEMO_BOX_LENGTH,
+    .height = COLLISION_DEMO_BOX_LENGTH,
   };
 }
 
-BoundingBox newBB(float x, float y, float w, float h)
+Quad newDemoQuad()
 {
-  BoundingBox bb = newDemoBB(0);
-  bb.x = x;
-  bb.y = y;
-  bb.width = w;
-  bb.height = h;
-  bb.a = 1.0f;
-  return bb;
+  float x0 = 60 + 1.0f * (rand() % (state->screen_w - 100));
+  float y0 = 60 + 1.0f * (rand() % (state->screen_h - 100));
+  //float x0 = 60;
+  //float y0 = 60;
+  float width = COLLISION_DEMO_BOX_LENGTH;
+  float height = COLLISION_DEMO_BOX_LENGTH;
+  return {
+    .ul = {x0, y0 + height},
+    .ur = {x0 + width, y0 + height},
+    .br = {x0 + width, y0},
+    .bl = {x0, y0},
+  };
+}
+
+Color newColor()
+{
+  return {
+    .r=0.1f * (rand() % 9), 
+    .g=0.1f * (rand() % 9), 
+    .b=0.1f * (rand() % 9), 
+    .a=0.5f + 0.1f * (rand() % 5)
+  };
+}
+
+ColorBox newDemoColorBox(unsigned int c)
+{
+  return {
+    .veloc_x = MIN(500, 10.0f + 30.0f * c),
+    .veloc_y = MIN(500, 10.0f + 20.0f * c),
+    .accel_x = (rand() % (1+c)) % 2 == 0 ? -1.0f : 1.0f,
+    .accel_y = (rand() % (1+c)) % 2 == 0 ? 1.0f : -1.0f,
+    .accel_r=0.5f,
+    .accel_g=0.5f,
+    .accel_b=0.5f,
+    .accel_a=0.5f,
+  };
+}
+
+Quad newQuad(float x, float y, float w, float h)
+{
+  float x0 = x;
+  float y0 = y;
+  float width = w;
+  float height = h;
+  return {
+    .ul = {x0, y0 + height},
+    .ur = {x0 + width, y0 + height},
+    .br = {x0 + width, y0},
+    .bl = {x0, y0},
+  };
 }
 
 extern "C" GAME_INIT(GameInit)
@@ -183,26 +271,39 @@ extern "C" GAME_INIT(GameInit)
   }
   state->screen_w = screen_w;
   state->screen_h = screen_h;
-  
+
+  state->collisionDemoInitialized = false;
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
-    srand(37);
+    screenQuad = {
+      .ul = {COLLISION_DEMO_BOX_LENGTH,
+	1.0f*state->screen_h - COLLISION_DEMO_BOX_LENGTH},
+      .ur = {state->screen_w*1.0f - COLLISION_DEMO_BOX_LENGTH,
+	1.0f*state->screen_h - COLLISION_DEMO_BOX_LENGTH},
+      .br = {state->screen_w*1.0f - COLLISION_DEMO_BOX_LENGTH, 0.0f},
+      .bl = {COLLISION_DEMO_BOX_LENGTH, 0.0f},
+    };
     state->collisionDemoInitialized = true;
-    state->wall = newBB(300.0f, 100.0f, 50.0f, 200.0f);
-    state->ground = newBB(0.0f, 0.0f, 1.0f*state->screen_w, 30.0f);
+    state->wall = newQuad(300.0f, 100.0f, 50.0f, 200.0f);
+    state->wallColor = newColor();
+    state->ground = {
+      .ul = {0, 0.1f*state->screen_h},
+      .ur = {state->screen_w*1.0f, 0.1f * state->screen_h},
+      .br = {state->screen_w*1.0f, 0},
+      .bl = {0, 0},
+    };
+    state->groundColor = newColor();
     for (unsigned int c=0; c < COLLISION_DEMO_INITIAL_BOX_COUNT; c++) {
-      state->boxes[c] = newDemoBB(c);
+      state->boxes[c] = newDemoColorBox(c);
+      state->box_rects[c] = newDemoQuad();
+      state->box_color[c] = newColor();
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
   }
-  
-  state->characterDemoInitialized = false;
-  if (CHARACTER_DEMO_ENABLED) {
+
+  if (CHARACTER_DEMO_ENABLED && state->characterDemoInitialized) {
     state->characterDemoInitialized = true;
     state->character.textureIndex = state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE);
-    state->character.bb.x = 150;
-    state->character.bb.y = 250;
-    state->character.bb.width = 64;
-    state->character.bb.height = 128;
+    state->character.bb = newQuad(150.0f, 250.0f, 64.0f, 120.0);
   }
 }
 
@@ -219,87 +320,176 @@ float speed(float accel, float dt, float velocity)
 void shiftColor(float* c, float* accel, float dt)
 {
   *c += *accel * (dt * COLOR_SHIFT_RATE * (rand() % 9));
-  if (*c >= 0.7f || *c <= 0.0f) 
+  if (*c >= 0.7f || *c <= 0.2f) 
     *accel *= -1.0f;
 }
 
 extern "C" GAME_UPDATE(GameUpdate)
 {
-  for (unsigned int c=0; c < state->boxCount; c++){
-    
-    // Determine the next x and y bounding boxes
-    BoundingBox bb_next_x = {
-      0,0,state->boxes[c].x + speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
-      state->boxes[c].y, state->boxes[c].width, state->boxes[c].height,
-    };
-    
-    BoundingBox bb_next_y = {
-      0,0,state->boxes[c].x,
-      state->boxes[c].y + speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y),
-      state->boxes[c].width, state->boxes[c].height
-    };
-    
-    if (checkCollision(&bb_next_x, &state->wall)) {
-      state->boxes[c].accel_x *= -1.0f;
-    } else if (checkCollision(&bb_next_x, &state->ground)) {
-      state->boxes[c].accel_x *= -1.0f;
-    } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->screen_w) {
-      state->boxes[c].accel_x *= -1.0f;
-    }
-    
-    if (checkCollision(&bb_next_y, &state->wall)) {
-      state->boxes[c].accel_y *= -1.0f;
-    } else if (checkCollision(&bb_next_y, &state->ground)) {
-      state->boxes[c].accel_y *= -1.0f;
-    } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->screen_h) {
-      state->boxes[c].accel_y *= -1.0f;
-    }
-    
-    state->boxes[c].x += speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x);
-    state->boxes[c].y += speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y);
+  if (COLLISION_DEMO_ENABLED) {
+    for (unsigned int c=0; c < 50000; c++){
+      
+      // Determine the next x and y bounding boxes
+      Vertex speed_vector = {
+	.x=speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
+	.y=speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y)
+      };
+      // TODO: apply this transform more efficiently, i.e. translation op
+      Quad bb_next_x = {
+	.ul={state->box_rects[c].ul.x + speed_vector.x, state->box_rects[c].ul.y},
+	.ur={state->box_rects[c].ur.x + speed_vector.x, state->box_rects[c].ur.y},
+	.br={state->box_rects[c].br.x + speed_vector.x, state->box_rects[c].br.y},
+	.bl={state->box_rects[c].bl.x + speed_vector.x, state->box_rects[c].bl.y},
+      };
+      Quad bb_next_y = {
+	.ul={state->box_rects[c].ul.x, state->box_rects[c].bl.y + speed_vector.y},
+	.ur={state->box_rects[c].ur.x, state->box_rects[c].ul.y + speed_vector.y},
+	.br={state->box_rects[c].br.x, state->box_rects[c].ur.y + speed_vector.y},
+	.bl={state->box_rects[c].bl.x, state->box_rects[c].br.y + speed_vector.y},
+      };
+      
+      if (checkCollision(&bb_next_x, &state->wall)) {
+	state->boxes[c].accel_x *= -1.0f;
+      } else if (checkCollision(&bb_next_x, &state->ground)) {
+	state->boxes[c].accel_x *= -1.0f;
+      } else if (!checkCollision(&bb_next_x, &screenQuad)) {
+	state->boxes[c].accel_x *= -1.0f;
+      }
+      
+      if (checkCollision(&bb_next_y, &state->wall)) {
+	state->boxes[c].accel_y *= -1.0f;
+      } else if (checkCollision(&bb_next_y, &state->ground)) {
+	state->boxes[c].accel_y *= -1.0f;
+      } else if (!checkCollision(&bb_next_y, &screenQuad)) {
+	state->boxes[c].accel_y *= -1.0f;
+      }
 
-    shiftColor(&state->boxes[c].r, &state->boxes[c].accel_r, dt);
-    shiftColor(&state->boxes[c].g, &state->boxes[c].accel_g, dt);
-    shiftColor(&state->boxes[c].b, &state->boxes[c].accel_b, dt);
-    shiftColor(&state->boxes[c].a, &state->boxes[c].accel_a, dt);
+      speed_vector = {
+	.x=speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
+	.y=speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y)
+      };
+      // TODO: this could be done better
+      state->box_rects[c].bl.x += speed_vector.x;
+      state->box_rects[c].br.x += speed_vector.x;
+      state->box_rects[c].ul.x += speed_vector.x;
+      state->box_rects[c].ur.x += speed_vector.x;
+      state->box_rects[c].bl.y += speed_vector.y;
+      state->box_rects[c].br.y += speed_vector.y;
+      state->box_rects[c].ul.y += speed_vector.y;
+      state->box_rects[c].ur.y += speed_vector.y;
+
+      // TODO: if we gotta have 4, memcpy?
+      shiftColor(&state->box_color[c*4].r, &state->boxes[c].accel_r, dt);
+      shiftColor(&state->box_color[c*4].g, &state->boxes[c].accel_g, dt);
+      shiftColor(&state->box_color[c*4].b, &state->boxes[c].accel_b, dt);
+      shiftColor(&state->box_color[c*4].a, &state->boxes[c].accel_a, dt);
+      shiftColor(&state->box_color[c*4+1].r, &state->boxes[c].accel_r, dt);
+      shiftColor(&state->box_color[c*4+1].g, &state->boxes[c].accel_g, dt);
+      shiftColor(&state->box_color[c*4+1].b, &state->boxes[c].accel_b, dt);
+      shiftColor(&state->box_color[c*4+1].a, &state->boxes[c].accel_a, dt);
+      shiftColor(&state->box_color[c*4+2].r, &state->boxes[c].accel_r, dt);
+      shiftColor(&state->box_color[c*4+2].g, &state->boxes[c].accel_g, dt);
+      shiftColor(&state->box_color[c*4+2].b, &state->boxes[c].accel_b, dt);
+      shiftColor(&state->box_color[c*4+2].a, &state->boxes[c].accel_a, dt);
+      shiftColor(&state->box_color[c*4+3].r, &state->boxes[c].accel_r, dt);
+      shiftColor(&state->box_color[c*4+3].g, &state->boxes[c].accel_g, dt);
+      shiftColor(&state->box_color[c*4+3].b, &state->boxes[c].accel_b, dt);
+      shiftColor(&state->box_color[c*4+3].a, &state->boxes[c].accel_a, dt);
+    }
   }
-  
-  if (state->character.bb.x < 0 || state->character.bb.x > state->screen_w) {
-    state->character.bb.accel_x *= -1.0f;
-  } else if (checkCollision(&state->character.bb, &state->wall)) {
-    state->character.bb.accel_x *= -1.0f;
+
+  if (CHARACTER_DEMO_ENABLED){
+    /*
+    Vertex speed_vector = {
+      speed(state->character.accel_x, dt, state->character.veloc_x),
+      speed(state->character.accel_y, dt, state->character.veloc_y)
+    };
+    */
+    
+    if (checkCollision(&state->character.bb, &state->wall)) {
+      state->character.accel_x *= -1.0f;
+    } else if (!checkCollision(&state->character.bb, &screenQuad)) {
+      //} else if (state->character.bb.x < 0 || state->character.bb.x > state->screen_w) {
+      state->character.accel_x *= -1.0f;
+    }
+        
+    if (checkCollision(&state->character.bb, &state->wall)) {
+      state->character.accel_y *= -1.0f;
+    } else if (!checkCollision(&state->character.bb, &state->wall)) {
+      //} else if (state->character.bb.y < 0 || state->character.bb.y > state->screen_h) {
+      state->character.accel_y *= -1.0f;
+    }
+    //state->character.bb.x += speed(state->character.accel_x, dt, state->character.veloc_x);
+    //state->character.bb.y += speed(state->character.accel_y, dt, state->character.veloc_y);
   }
-  if (state->character.bb.y < 0 || state->character.bb.y > state->screen_h) {
-    state->character.bb.accel_y *= -1.0f;
-  } else if (checkCollision(&state->character.bb, &state->wall)) {
-    state->character.bb.accel_y *= -1.0f;
-  }
-  state->character.bb.x += speed(state->character.bb.accel_x, dt, state->character.bb.veloc_x);
-  state->character.bb.y += speed(state->character.bb.accel_y, dt, state->character.bb.veloc_y);
 }
-
 
 
 extern "C" GAME_RENDER(GameRender)
 {
-  state->api.PlatformDrawBox(state->wall.x, state->wall.y, state->wall.width, state->wall.height,
-			     state->wall.r, state->wall.g, state->wall.b, state->wall.a);
-  state->api.PlatformDrawBox(state->ground.x, state->ground.y, state->ground.width, state->ground.height,
-			     state->ground.r, state->ground.g, state->ground.b, state->ground.a);
-  for (unsigned int c; c < state->boxCount; c++) {
-    state->api.PlatformDrawBox(state->boxes[c].x,
-			       state->boxes[c].y,
-			       state->boxes[c].width,
-			       state->boxes[c].height,
-			       state->boxes[c].r,
-			       state->boxes[c].g,
-			       state->boxes[c].b,
-			       state->boxes[c].a);
+  if (COLLISION_DEMO_ENABLED) {
+    //state->api.PlatformDrawBox(50, 50, 300, 300, 0, 0, 0, 0);
+    //state->api.PlatformDrawQuad(-0.5f, -0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0, 0, 1, 1);
+    //state->api.PlatformDrawQuad(50, 50, 100, 50, 100, 100, 50, 100, 0, 0, 1, 1);
+    state->api.PlatformDrawQuad(state->wall.bl.x,
+				state->wall.bl.y,
+				state->wall.br.x,
+				state->wall.br.y,
+				state->wall.ur.x,
+				state->wall.ur.y,
+				state->wall.ul.x,
+				state->wall.ul.y,
+				state->wallColor.r,
+				state->wallColor.g,
+				state->wallColor.b,
+				state->wallColor.a);
+    state->api.PlatformDrawQuad(state->ground.bl.x,
+				state->ground.bl.y,
+				state->ground.br.x,
+				state->ground.br.y,
+				state->ground.ur.x,
+				state->ground.ur.y,
+				state->ground.ul.x,
+				state->ground.ul.y,
+				state->groundColor.r,
+				state->groundColor.g,
+				state->groundColor.b,
+				state->groundColor.a);
+
+
+    /*
+    state->api.PlatformDrawBatch(state->boxCount,
+				 (const float *)state->box_rects,
+				 (const float *)state->box_color,
+    				 NULL);
+    */
+
+    
+    for (unsigned int c=25000; c < 25002; c++) {
+      state->api.PlatformDrawQuad(state->box_rects[c].bl.x,
+                                  state->box_rects[c].bl.y,
+                                  state->box_rects[c].br.x,
+                                  state->box_rects[c].br.y,
+                                  state->box_rects[c].ur.x,
+                                  state->box_rects[c].ur.y,
+                                  state->box_rects[c].ul.x,
+                                  state->box_rects[c].ul.y,
+                                  state->box_color[c*4].r,
+                                  state->box_color[c*4].g,
+                                  state->box_color[c*4].b,
+                                  state->box_color[c*4].a);
+                                  }
+    
   }
-  state->api.PlatformDrawTexture(state->character.textureIndex,
-				 state->character.bb.x,
-				 state->character.bb.y,
-				 state->character.bb.width,
-				 state->character.bb.height,
-				 113, 160, 16, 32);
+
+  if (CHARACTER_DEMO_ENABLED) {
+    /*
+    state->api.PlatformDrawTexture(state->character.textureIndex,
+                                   state->character.bb.x,
+                                   state->character.bb.y,
+                                   state->character.bb.width,
+                                   state->character.bb.height,
+                                   113, 160, 16, 32);
+    */
+  }
 }

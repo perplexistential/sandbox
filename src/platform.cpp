@@ -15,7 +15,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <SDL2/SDL.h>
+#include <GL/glew.h>
 #include <SDL2/SDL_opengl.h>
+#include <GL/glu.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_surface.h>
 
@@ -89,6 +91,13 @@ static struct
   SDL_GLContext gl_context[MAX_WINDOWS];
   GameCode game_code;
   GameMemory game_memory;
+
+  GLuint vertex_shader;
+  GLuint fragment_shader;
+  GLuint vertex_color_program;
+  GLuint vertex_buffer;
+  GLuint colors_buffer;
+  GLuint vao;
 } state;
 
 
@@ -333,6 +342,69 @@ PLATFORM_DRAW_BOX(DrawBox)
     glEnd();
 }
 
+PLATFORM_DRAW_QUAD(DrawQuad)
+{
+    glBegin(GL_QUADS);
+	glColor4f(r, g, b, a);
+        glVertex2f(ul_x, ul_y);
+        glVertex2f(ur_x, ur_y);
+        glVertex2f(br_x, br_y);
+        glVertex2f(bl_x, bl_y);
+    glEnd();
+}
+
+#define VERTEX_LENGTH_2D 2
+#define COLOR_LENGTH_2D 4
+
+#define VERTEX_VB 0
+#define COLOR_VB 1
+//#define TEXCOORD_VB 2
+#define BUFFER_COUNT 2
+
+const char* vertex_shader =
+  "layout(location = 0) in vec2 vertexPosition;"
+  "layout(location = 1) in vec4 vertexColor;"
+  "out vec4 colour;"
+  "void main() {"
+  "  vertexColor = vec4(vertexColor.rgba);"
+  "  gl_Position = vec4(vertexPosition.xy, 0, 1.0);"
+  "}";
+  
+const char* fragment_shader =
+  "#version 400\n"
+  "out vec4 frag_color;"
+  "in vec4 vertexColor;"
+  "void main() {"
+  "  frag_color = vec4(vertexColor);"
+  "}";
+
+PLATFORM_DRAW_BATCH(DrawBatch)
+{
+  GLuint attribCount = 0;
+  
+  glGenVertexArrays(1, &state.vao);
+  glGenBuffers(1, &state.vertex_buffer);
+  glGenBuffers(1, &state.colors_buffer);
+  
+  glBindVertexArray(state.vao);
+
+  glBindBuffer(GL_ARRAY_BUFFER, state.vertex_buffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*VERTEX_LENGTH_2D*4*length, vertices, GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float)*VERTEX_LENGTH_2D, (void *)0);
+  glEnableVertexAttribArray(attribCount++);
+
+  if (colors) {
+    glBindBuffer(GL_ARRAY_BUFFER, state.colors_buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*COLOR_LENGTH_2D*4*length, colors, GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(float)*COLOR_LENGTH_2D, (void *)0);
+    glEnableVertexAttribArray(attribCount++);
+  }
+  
+  glUseProgram(state.vertex_color_program);
+  glBindVertexArray(state.vao);
+  glDrawArrays(GL_QUADS, 0, length);
+}
+
 PLATFORM_ENSURE_IMAGE(EnsureImage)
 {
   bool found = false;
@@ -385,19 +457,20 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
 
 PLATFORM_ENSURE_SPRITESHEET(EnsureSpritesheet)
 {
-  printf("loading spritesheets is not yet implemented");
+  printf("loading spritesheets is not yet implemented: %s", filename);
   return -1;
 }
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
 {
+  printf("%d", textureIndex); // TODO: is this parameter needed? for binding?
   float texW, texH;
   glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
   glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
 
-  float texCoordX0;
+  float texCoordX0 = 0.0f;
   float texCoordX1 = sprite_w;
-  float texCoordY0;
+  float texCoordY0 = 0.0f;
   float texCoordY1 = sprite_h;
   if (sprite_x != 0 && sprite_x != texW) {
     texCoordX0 = sprite_x / texW;
@@ -407,7 +480,7 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
     texCoordY0 = sprite_y / texH;
     texCoordY1 = (sprite_y + sprite_h) / texH;
   }
-  
+
   glEnable(GL_TEXTURE_2D);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -454,10 +527,12 @@ PlatformAPI GetPlatformAPI()
     PlatformAPI result = {};
 
     result.PlatformDrawBox = DrawBox;
+    result.PlatformDrawQuad = DrawQuad;
     result.PlatformDrawTexture = DrawTexture;
     result.PlatformEnsureImage = EnsureImage;
     result.PlatformQuit = QuitGame;
     result.PlatformCreateWindow = CreateWindow;
+    result.PlatformDrawBatch = DrawBatch;
     return result;
 }
 
@@ -465,8 +540,8 @@ GameMemory AllocateGameMemory()
 {
     GameMemory result = {};
 
-    result.ptr = (uint8_t *)calloc(1, 1024);
-    result.size = 1024;
+    result.ptr = (uint8_t *)calloc(1, 12000000);
+    result.size = 12000000;
     result.cursor = result.ptr;
 
     return result;
@@ -842,6 +917,7 @@ void GameLoop()
     state.game_code.game_update(1.0f/60.0f);
     
     glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(1, 0, 1, 1);
     state.game_code.game_render();
     for (int w = 0; w < state.window_count; w++) {
       SDL_GL_SwapWindow(state.windows[w]);
@@ -862,6 +938,10 @@ void GameLoop()
 
 int main(int argc, char *argv[])
 {
+  for (int arg=0; arg<argc; arg++) {
+    printf("%d: %s", arg, (char *)argv[arg]);
+  }
+  
   if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
     Die("Failed to initialize SDL2: %s\n", SDL_GetError());
   }
@@ -873,11 +953,34 @@ int main(int argc, char *argv[])
   
   if(IMG_Init(IMG_INIT_PNG) < 0) {
     Die("Failed to initialize PNG support: %s\n", IMG_GetError());
-   }
+  }
 
   state.window_count = 0;
   CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  glutInit(&argc, argv);
   
+  GLenum glewError = glewInit(); 
+  if (GLEW_OK != glewError) {
+    Die("Error initializing GLEW: %s\n", glewGetErrorString(glewError));
+  }
+
+  // get version info
+  const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
+  const GLubyte* version = glGetString(GL_VERSION); // version as a string
+  printf("Renderer: %s\n", renderer);
+  printf("OpenGL version supported %s\n", version);
+
+  state.vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(state.vertex_shader, 1, &vertex_shader, NULL);
+  glCompileShader(state.vertex_shader);
+  state.fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(state.fragment_shader, 1, &fragment_shader, NULL);
+  glCompileShader(state.fragment_shader);
+  state.vertex_color_program = glCreateProgram();
+  glAttachShader(state.vertex_color_program, state.fragment_shader);
+  glAttachShader(state.vertex_color_program, state.vertex_shader);
+  glLinkProgram(state.vertex_color_program);
   
   // game state init
   state.game_memory = AllocateGameMemory();
