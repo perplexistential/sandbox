@@ -324,13 +324,16 @@ void UnloadGameCode(GameCode *game_code)
 
 PLATFORM_DRAW_BOX(DrawBox)
 {
-    glBegin(GL_QUADS);
-	glColor4f(r, g, b, a);
-        glVertex2f(x, y);
-        glVertex2f(x+width, y);
-        glVertex2f(x+width, y+height);
-        glVertex2f(x, y+height);
-    glEnd();
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_BLEND);
+  glBegin(GL_QUADS);
+    glColor4f(r, g, b, a);
+    glVertex2f(x, y);
+    glVertex2f(x+width, y);
+    glVertex2f(x+width, y+height);
+    glVertex2f(x, y+height);
+  glEnd();
+  glDisable(GL_BLEND);
 }
 
 PLATFORM_ENSURE_IMAGE(EnsureImage)
@@ -368,9 +371,9 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
     glGenTextures(1, &state.textures[textureIndex].textureID);
     glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
     glTexImage2D(GL_TEXTURE_2D,
-		 0, GL_RGBA,
+		 0, mode,
 		 newSurface->w, newSurface->h,
-		 0, GL_RGBA,
+		 0, mode,
 		 GL_UNSIGNED_BYTE, newSurface->pixels);
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -445,7 +448,6 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glOrtho(0.0f, 1.0f*width, 0.0f, 1.0f*height, 0.0f, 1.0f);
-  
   state.window_count++;
 }
 
@@ -842,6 +844,7 @@ void GameLoop()
     state.game_code.game_update(1.0f/60.0f);
     
     glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
     state.game_code.game_render();
     for (int w = 0; w < state.window_count; w++) {
       SDL_GL_SwapWindow(state.windows[w]);
