@@ -1,7 +1,3 @@
-#include <SDL2/SDL_events.h>
-#include <SDL2/SDL_joystick.h>
-#include <SDL2/SDL_stdinc.h>
-#include <SDL2/SDL_video.h>
 #include <assert.h>
 #include <cstddef>
 #include <cstdint>
@@ -14,8 +10,14 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_events.h>
+#include <SDL2/SDL_joystick.h>
+#include <SDL2/SDL_stdinc.h>
+#include <SDL2/SDL_video.h>
 #include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_surface.h>
 
@@ -33,6 +35,9 @@
 #define GAME_LIB_TEMP "build/libgame_temp.so"
 
 #define IMAGES_DIR "assets/images"
+#define AUDIO_DIR "assets/audio"
+#define MUSIC_DIR "assets/music"
+#define SCREENSHOTS_DIR "screenshots"
 
 struct GameCode
 {
@@ -50,7 +55,7 @@ struct GameCode
   GameWindowMousedFn *game_window_moused;
   GameWindowFocusedFn *game_window_focused;
   GameWindowClosedFn *game_window_closed;
-  
+
   GameKeyboardInputFn *game_keyboard_input;
   GameMouseMotionFn *game_mouse_motion;
   GameMouseButtonFn *game_mouse_button;
@@ -66,6 +71,8 @@ struct GameCode
   GameControllerSensorEventFn *game_controller_sensor_event;
   GameControllerTouchpadEventFn *game_controller_touchpad_event;
   GameAudioDeviceEventFn *game_audio_device_event;
+  GameAudioChannelHaltedFn *game_audio_channel_halted;
+  GameMusicHaltedFn *game_music_halted;
   GameTouchFingerEventFn *game_touch_finger_event;
   GameDropEventFn *game_drop_event;
   GameSensorEventFn *game_sensor_event;
@@ -78,17 +85,45 @@ struct GameCode
 struct Texture
 {
   char filename[MAX_FILENAME_LENGTH];
+  // ...if filename is overloaded, it'll probably wreck this GLuint first... have fun!
   GLuint textureID;
+};
+
+#define MAX_AUDIOS 500
+#define MAX_MUSIC 100
+
+struct Audio
+{
+  char filename[MAX_FILENAME_LENGTH];
+  Mix_Chunk *chunk;
+  int channel;  // This is "int" because SDL_mixer uses it
+};
+
+struct Music
+{
+  char filename[MAX_FILENAME_LENGTH];
+  Mix_Music *music;
+  int track;
 };
 
 static struct
 {
-  SDL_Window *windows[MAX_WINDOWS];
-  int8_t window_count;
-  Texture textures[MAX_SURFACES];
-  SDL_GLContext gl_context[MAX_WINDOWS];
+  // Game
   GameCode game_code;
   GameMemory game_memory;
+  // App
+  int screen_x, screen_y, screen_w, screen_h;
+  SDL_Window *windows[MAX_WINDOWS];
+  int8_t window_count;
+  SDL_GLContext gl_context[MAX_WINDOWS];
+  // Video 
+  Texture textures[MAX_SURFACES];
+  // Audio
+  Audio audio[MAX_AUDIOS];
+  int channel_count;
+  // Music
+  Music music[MAX_MUSIC];
+  int track_count;
 } state;
 
 
@@ -121,7 +156,6 @@ time_t GetFileWriteTime(const char *file)
     if(stat(file, &buf) == 0) {
         return buf.st_mtime;
     }
-
     return 0;
 }
 
@@ -252,10 +286,19 @@ GameCode LoadGameCode(const char *path)
 	  result.game_controller_sensor_event = NULL;
 	}
 
-	
 	result.game_audio_device_event = (GameAudioDeviceEventFn *)dlsym(result.handle, "GameAudioDeviceEvent");
 	if ((error = dlerror()) != NULL) {
 	  result.game_audio_device_event = NULL;
+	}
+ 
+	result.game_audio_channel_halted = (GameAudioChannelHaltedFn *)dlsym(result.handle, "GameAudioChannelHalted");
+	if ((error = dlerror()) != NULL) {
+	  result.game_audio_channel_halted = NULL;
+	}
+	
+	result.game_music_halted = (GameMusicHaltedFn *)dlsym(result.handle, "GameMusicHalted");
+	if ((error = dlerror()) != NULL) {
+	  result.game_music_halted = NULL;
 	}
 
 	result.game_touch_finger_event = (GameTouchFingerEventFn *)dlsym(result.handle, "GameTouchFingerEvent");
@@ -316,6 +359,8 @@ void UnloadGameCode(GameCode *game_code)
   game_code->game_controller_sensor_event = 0;
   game_code->game_controller_touchpad_event = 0;
   game_code->game_audio_device_event = 0;
+  game_code->game_audio_channel_halted = 0;
+  game_code->game_music_halted = 0;
   game_code->game_touch_finger_event = 0;
   game_code->game_drop_event = 0;
   game_code->game_sensor_event = 0;
@@ -336,6 +381,30 @@ PLATFORM_DRAW_BOX(DrawBox)
   glDisable(GL_BLEND);
 }
 
+void opengl_load_texture(int textureIndex, const char *imagePath)
+{
+  SDL_Surface* newSurface = IMG_Load(imagePath);
+  if (!newSurface) {
+    Die("Failed to load the image: %s", IMG_GetError());
+  }
+  int mode = GL_RGB;
+  if (newSurface->format->BytesPerPixel == 4) {
+    mode = GL_RGBA;
+  }
+  glGenTextures(1, &state.textures[textureIndex].textureID);
+  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
+  glTexImage2D(GL_TEXTURE_2D,
+	       0, mode,
+	       newSurface->w, newSurface->h,
+	       0, mode,
+	       GL_UNSIGNED_BYTE, newSurface->pixels);
+  
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+}
+
 PLATFORM_ENSURE_IMAGE(EnsureImage)
 {
   bool found = false;
@@ -343,7 +412,6 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
   int imagePathLength = strlen(IMAGES_DIR)+strlen(filename) + 1;
   char *imagePath = (char *) malloc(imagePathLength * sizeof(char));
   sprintf(imagePath, "%s/%s", IMAGES_DIR, filename);
-
   for(unsigned int i=0; i < MAX_SURFACES; i++){
     if (textureIndex == -1 && state.textures[i].textureID == 0){
       textureIndex = i;
@@ -360,36 +428,11 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
     Die("no space left to load the image: %s", filename);
   }
   if (!found) {
-    SDL_Surface* newSurface = IMG_Load(imagePath);
-    if (!newSurface) {
-      Die("Failed to load the image: %s", IMG_GetError());
-    }
-    int mode = GL_RGB;
-    if (newSurface->format->BytesPerPixel == 4) {
-      mode = GL_RGBA;
-    }
-    glGenTextures(1, &state.textures[textureIndex].textureID);
-    glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
-    glTexImage2D(GL_TEXTURE_2D,
-		 0, mode,
-		 newSurface->w, newSurface->h,
-		 0, mode,
-		 GL_UNSIGNED_BYTE, newSurface->pixels);
-
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    opengl_load_texture(textureIndex, imagePath);
     strncpy(state.textures[textureIndex].filename, filename, MAX_FILENAME_LENGTH);
   }
   free(imagePath);
   return textureIndex;
-}
-
-PLATFORM_ENSURE_SPRITESHEET(EnsureSpritesheet)
-{
-  printf("loading spritesheets is not yet implemented");
-  return -1;
 }
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
@@ -398,9 +441,9 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
   glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
   glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
 
-  float texCoordX0;
+  float texCoordX0 = 0;
   float texCoordX1 = sprite_w;
-  float texCoordY0;
+  float texCoordY0 = 0;
   float texCoordY1 = sprite_h;
   if (sprite_x != 0 && sprite_x != texW) {
     texCoordX0 = sprite_x / texW;
@@ -414,7 +457,8 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
   glEnable(GL_TEXTURE_2D);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  
+
+  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
   glBegin(GL_QUADS);
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glTexCoord2f(texCoordX0, texCoordY1); glVertex3f(x, y, 0);
@@ -427,7 +471,10 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
   glDisable(GL_TEXTURE_2D);
 }
 
-PLATFORM_QUIT(QuitGame) { Quit(); }
+PLATFORM_QUIT(QuitGame) {
+  Mix_CloseAudio();
+  Quit();
+}
 
 PLATFORM_CREATE_WINDOW(CreateWindow) {
   if (state.window_count > MAX_WINDOWS) {
@@ -451,16 +498,269 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   state.window_count++;
 }
 
+void sdl_load_audio(int audioIndex, const char *audioPath)
+{
+  Mix_Chunk *chunk = Mix_LoadWAV(audioPath);
+  if (chunk) {
+    Die("failed to load audio: %s\n", audioPath);
+  }
+  state.audio[audioIndex].chunk = chunk;
+  state.audio[audioIndex].channel = state.channel_count++;
+}
+
+void sdl_load_music(int musicIndex, const char *musicPath)
+{
+  Mix_Music *music;
+  music = Mix_LoadMUS(musicPath);
+  if(!music) {
+    Die("failed to load music: %s\n", musicPath);
+  }
+  state.music[musicIndex].music = music;
+  state.music[musicIndex].track = state.track_count++;
+}
+
+PLATFORM_ENSURE_AUDIO(EnsureAudio)
+{
+  int audioIndex = -1;
+  printf("file(%s), channel(%d)\n", filename, channel);
+  bool found = false;
+  int audioPathLength = strlen(AUDIO_DIR)+strlen(filename) + 1;
+  char *audioPath = (char *) malloc(audioPathLength * sizeof(char));
+  sprintf(audioPath, "%s/%s", AUDIO_DIR, filename);
+
+  for(unsigned int i=0; i < MAX_SURFACES; i++){
+    if (audioIndex == -1 && state.audio[i].channel == 0){
+      audioIndex = i;
+    }
+    if (0 == strncmp(state.audio[i].filename, filename, MAX_FILENAME_LENGTH)) {
+      found = true;
+      audioIndex = i;
+    }
+    if (found && -1 != audioIndex) {
+      break;
+    }
+  }
+  if (-1 == audioIndex) {
+    Die("no space left to load the image: %s", filename);
+  }
+  if (!found) {
+    sdl_load_audio(audioIndex, audioPath);
+    strncpy(state.audio[audioIndex].filename, filename, MAX_FILENAME_LENGTH);
+  }
+  free(audioPath);
+  return audioIndex;
+}
+
+PLATFORM_PLAY_AUDIO(PlayAudio)
+{
+  int result = 0;
+  printf("channel(%d), fade(%d), loops(%d), volume(%d), duration(%d)\n",
+	 channel, fade, loops, volume, duration);
+  if (volume) {
+    Mix_Volume(channel, volume);
+  }
+  if (fade > 0) { 
+    if (duration > 0) {
+      result = Mix_FadeInChannelTimed(state.audio[channel].channel,
+				      state.audio[channel].chunk,
+				      loops, fade, duration);
+    } else {
+      result = Mix_FadeInChannel(state.audio[channel].channel,
+				 state.audio[channel].chunk,
+				 loops, fade);
+    }
+  } else {
+    if (duration > 0) {
+      result = Mix_PlayChannelTimed(state.audio[channel].channel,
+				    state.audio[channel].chunk,
+				    loops, duration);
+    } else {
+      result = Mix_PlayChannel(state.audio[channel].channel,
+			       state.audio[channel].chunk,
+			       loops);
+    }
+  }
+  if (-1 == result) {
+    printf("failed to play audio: %s", Mix_GetError());
+  }
+}
+
+PLATFORM_STOP_AUDIO(StopAudio)
+{
+  printf("channel(%d), duration(%d), fade(%s)\n", channel, duration, fade ? "true" : "false");
+  if (duration) {
+    if (fade) {
+      Mix_FadeOutChannel(channel, duration);
+    } else {
+      Mix_ExpireChannel(channel, duration);
+    }
+  } else {
+    Mix_HaltChannel(channel);
+  }
+}
+
+void channelDone(int channel) {
+  if (state.game_code.game_audio_channel_halted)
+    state.game_code.game_audio_channel_halted(channel);
+}
+
+PLATFORM_ENSURE_MUSIC(EnsureMusic)
+{
+  int audioIndex = -1;
+  printf("file(%s), channel(%d)\n", filename, track);
+  bool found = false;
+  int audioPathLength = strlen(MUSIC_DIR)+strlen(filename) + 1;
+  char *audioPath = (char *) malloc(audioPathLength * sizeof(char));
+  sprintf(audioPath, "%s/%s", MUSIC_DIR, filename);
+
+  for(unsigned int i=0; i < MAX_SURFACES; i++){
+    if (audioIndex == -1 && state.music[i].track == 0){
+      audioIndex = i;
+    }
+    if (0 == strncmp(state.music[i].filename, filename, MAX_FILENAME_LENGTH)) {
+      found = true;
+      audioIndex = i;
+    }
+    if (found && -1 != audioIndex) {
+      break;
+    }
+  }
+  if (-1 == audioIndex) {
+    Die("no space left to load the image: %s", filename);
+  }
+  if (!found) {
+    sdl_load_music(audioIndex, audioPath);
+    strncpy(state.music[audioIndex].filename, filename, MAX_FILENAME_LENGTH);
+  }
+  free(audioPath);
+  return audioIndex;
+}
+
+
+
+void musicDone() {
+  if (state.game_code.game_music_halted)
+    state.game_code.game_music_halted();
+}
+
+PLATFORM_PLAY_MUSIC(PlayMusic)
+{
+  printf("play %d\n", track);
+}
+
+PLATFORM_STOP_MUSIC(StopMusic)
+{
+  printf("stop %d\n", track);
+}
+
+PLATFORM_SCREENSHOT(Screenshot)
+{
+  /*
+   * team worked; made my creams work : 
+   * thanks to Dave for this screenshot magic
+   * flux-compose: https://github.com/FluxHarmonic/flux-compose/blob/master/lib/graphics.c
+   */
+
+  // TODO: The screenshot should target a specific Window
+  printf("Screenshotting window 0, ignoring that %d was requested", window);
+  
+  int i = 0;
+  unsigned char *screen_bytes = NULL;
+  unsigned char *image_bytes = NULL;
+  size_t image_row_length = 4 * width;
+  size_t image_data_size = sizeof(*image_bytes) * image_row_length * height;
+  char output_file_path[40];
+  snprintf(output_file_path, sizeof(output_file_path), "%s/screenshot_%d",
+	   SCREENSHOTS_DIR, (int)time(NULL));
+  
+  printf("Rendering window(%d,%d) of size %u / %u to file: %s\n", x, y, width, height, output_file_path);
+  
+  // Allocate storage for the screen bytes
+  // TODO: reduce memory allocation requirements
+  screen_bytes = (unsigned char *)malloc(image_data_size);
+  image_bytes = (unsigned char *)malloc(image_data_size);
+  
+  // TODO: Switch context to this window
+  
+  // Store the screen contents to a byte array
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, screen_bytes);
+  
+  // Flip the rows of the byte array because OpenGL's coordinate system is flipped
+  for (i = 0; i < height; i++) {
+    memcpy(&image_bytes[image_row_length * i], &screen_bytes[image_row_length * (height - (i + 1))], sizeof(*image_bytes) * image_row_length);
+  }
+
+  //IMG_SavePNG(SDL_Surface *surface, const char *file)
+  
+  /*
+  // Save image data to a PNG file
+  FILE *out_file;
+  
+  struct spng_ihdr header;
+  int ret = 0;
+
+  out_file = fopen(output_file_path, "wb");
+
+  memset(&header, 0, sizeof(header));
+  header.width = width;
+  header.height = height;
+  header.bit_depth = 8;
+  header.color_type = SPNG_COLOR_TYPE_TRUECOLOR_ALPHA;
+
+  spng_ctx *ctx = NULL;
+  ctx = spng_ctx_new(SPNG_CTX_ENCODER);
+  spng_set_option(ctx, SPNG_ENCODE_TO_BUFFER, 0);
+
+  ret = spng_set_ihdr(ctx, &header);
+
+  if (ret) {
+    printf("Error setting PNG header data: %s\n", spng_strerror(ret));
+  }
+
+  ret = spng_set_png_file(ctx, out_file);
+
+  if (ret) {
+    printf("Error setting PNG output file: %s\n", spng_strerror(ret));
+  }
+
+  ret = spng_encode_image(ctx, image_bytes, sizeof(*image_bytes) * 4 * width * height, SPNG_FMT_PNG,
+                          SPNG_ENCODE_FINALIZE);
+
+  if (ret) {
+    printf("Error encoding PNG data: %s\n", spng_strerror(ret));
+  }
+
+  // TODO: Clean up context, etc
+
+  fflush(out_file);
+  fclose(out_file);
+  */
+  
+  // Clean up the memory
+  free(image_bytes);
+  free(screen_bytes);
+}
+
 PlatformAPI GetPlatformAPI()
 {
-    PlatformAPI result = {};
-
-    result.PlatformDrawBox = DrawBox;
-    result.PlatformDrawTexture = DrawTexture;
-    result.PlatformEnsureImage = EnsureImage;
-    result.PlatformQuit = QuitGame;
-    result.PlatformCreateWindow = CreateWindow;
-    return result;
+    PlatformAPI api = {};
+    // Draw
+    api.PlatformDrawBox = DrawBox;
+    api.PlatformDrawTexture = DrawTexture;
+    api.PlatformEnsureImage = EnsureImage;
+    api.PlatformScreenshot = Screenshot;
+    // App
+    api.PlatformQuit = QuitGame;
+    api.PlatformCreateWindow = CreateWindow;
+    // Audio
+    api.PlatformEnsureAudio = EnsureAudio;
+    api.PlatformPlayAudio = PlayAudio;
+    api.PlatformStopAudio = StopAudio;
+    // Music
+    api.PlatformEnsureMusic = EnsureMusic;
+    api.PlatformPlayMusic = PlayMusic;
+    api.PlatformStopMusic = StopMusic;
+    return api;
 }
 
 GameMemory AllocateGameMemory()
@@ -473,7 +773,6 @@ GameMemory AllocateGameMemory()
 
     return result;
 }
-
 
 void GameLoop()
 {
@@ -517,14 +816,26 @@ void GameLoop()
 	    state.game_code.game_window_shown(event.window.windowID, 0);
 	  break;
         case SDL_WINDOWEVENT_MOVED:
-	  if (state.game_code.game_window_moved)
-	    state.game_code.game_window_moved(event.window.windowID, event.window.data1,
+	  if (state.game_code.game_window_moved) {
+	    state.screen_x = event.window.data1;
+	    state.screen_y = event.window.data2;
+	    state.game_code.game_window_moved(event.window.windowID,
+					      event.window.data1,
 					      event.window.data2);
+	  }
 	  break;
         case SDL_WINDOWEVENT_RESIZED:
-	  if (state.game_code.game_window_resized)
-	    state.game_code.game_window_resized(event.window.windowID, event.window.data1,
+	  if (state.game_code.game_window_resized){
+	    state.screen_w = event.window.data1;
+	    state.screen_h = event.window.data2;
+	    state.game_code.game_window_resized(event.window.windowID,
+						event.window.data1,
 						event.window.data2);
+	    glViewport(state.screen_x, state.screen_y, state.screen_w, state.screen_h);
+	    glMatrixMode(GL_PROJECTION);
+	    glLoadIdentity();
+	    glOrtho(0.0f, 1.0f*state.screen_w, 0.0f, 1.0f*state.screen_h, 0.0f, 1.0f);
+	  }
 	  break;
         case SDL_WINDOWEVENT_MINIMIZED:
 	  if (state.game_code.game_window_minmaxed)
@@ -865,28 +1176,44 @@ void GameLoop()
 
 int main(int argc, char *argv[])
 {
+  for (int c = 0; c < argc; c++) {
+    printf("%c\n", *argv[c]);
+  }
   if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
     Die("Failed to initialize SDL2: %s\n", SDL_GetError());
   }
-
-  // Initialize the joystick subsystem 
-  if(SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0) {
-    printf("The joystick subsystem failed to initialize. Sorry...: %s\n", SDL_GetError());
+  // Image loading support
+  if(IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP) < 0) {
+    Die("Failed to initialize Image support: %s\n", IMG_GetError());
   }
-  
-  if(IMG_Init(IMG_INIT_PNG) < 0) {
-    Die("Failed to initialize PNG support: %s\n", IMG_GetError());
-   }
-
+  // TODO: MIX_INIT_MIDI?
+  if(Mix_Init(MIX_INIT_FLAC | MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_MOD | MIX_INIT_OPUS) < 0) {
+    Die("Failed to initialize Mixer support: %s\n", Mix_GetError());
+  }
+  // open 44.1KHz, signed 16bit, system byte order,
+  //      stereo audio, using 1024 byte chunks
+  if(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024)==-1) {
+    Die("Mix_OpenAudio: %s\n", Mix_GetError());
+  }
+  if(0 > Mix_AllocateChannels(200)){
+    Die("Failed to allocate audio channels: %s\n", Mix_GetError());
+  }
+  Mix_ChannelFinished(channelDone);
+  Mix_HookMusicFinished(musicDone);
+  // print the number of music decoders available
+  printf("There are %d music deocoders available\n", Mix_GetNumMusicDecoders());
   state.window_count = 0;
-  CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
   
+  CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
+  // get version info
+  const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
+  const GLubyte* version = glGetString(GL_VERSION); // version as a string
+  printf("Renderer: %s\n", renderer);
+  printf("OpenGL version supported %s\n", version);
   // game state init
   state.game_memory = AllocateGameMemory();
   state.game_code = LoadGameCode(GAME_LIB);
   state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
-
   GameLoop();
-  
   return 0;
 }

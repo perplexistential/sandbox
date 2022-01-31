@@ -286,6 +286,20 @@ BoundingBox newBB(float x, float y, float w, float h)
   return bb;
 }
 
+func(GAME_WINDOW_RESIZED, GameWindowResized)
+{
+  printf("window(%d) resized", window);
+  state->screen_w = width;
+  state->screen_h = height;
+}
+
+extern "C" GAME_QUIT(GameQuit)
+{
+  printf("game: got a quit - gonna take a screenshot\n");
+  state->api.PlatformScreenshot(0, 0, 0, state->screen_w, state->screen_h);
+}
+
+
 extern "C" GAME_INIT(GameInit)
 {
   state = GameAllocateStruct(&memory, GameState);
@@ -324,11 +338,6 @@ extern "C" GAME_INIT(GameInit)
     state->character.current_frame = 0;
     state->character.cyclesPerSecond = 30;
   }
-}
-
-extern "C" GAME_KEYBOARD_INPUT(GameKeyboardInput)
-{
-  
 }
 
 float speed(float accel, float dt, float velocity)
@@ -447,12 +456,14 @@ extern "C" GAME_UPDATE(GameUpdate)
       }
       speed = &speed_y;
     }
+    
     // "2" = the number of walking animation frames.
     // "1 +" because the frame at 0 is the stand ing animation frame
     state->character.current_frame += (dt / (1.0 / abs(*speed))) * 10;
     if (state->character.current_frame >= 2){
       state->character.current_frame = 0;
     }
+    
   }
 }
 
@@ -484,3 +495,15 @@ extern "C" GAME_RENDER(GameRender)
 				     sf->x, sf->y, sf->width, sf->height);
     }
 }
+
+extern "C" GAME_KEYBOARD_INPUT(GameKeyboardInput)
+{
+  
+}
+
+extern "C" GAME_AUDIO_CHANNEL_HALTED(GameAudioChannelHalted)
+{
+  printf("%d audio channel halted\n", channel);
+}
+
+

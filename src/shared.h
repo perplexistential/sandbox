@@ -44,9 +44,6 @@ const unsigned int MAX_FILENAME_LENGTH = 31;
 #define PLATFORM_ENSURE_IMAGE(n) unsigned int n(const char *filename)
 typedef PLATFORM_ENSURE_IMAGE(PlatformEnsureImageFn);
 
-#define PLATFORM_ENSURE_SPRITESHEET(n) unsigned int n(const char *filename)
-typedef PLATFORM_ENSURE_SPRITESHEET(PlatformEnsureSpritesheetFn);
-
 #define PLATFORM_DRAW_TEXTURE(n)                                               \
   void n(unsigned int textureIndex, float x, float y, float width,             \
          float height, int sprite_x, int sprite_y, int sprite_w, int sprite_h)
@@ -58,23 +55,58 @@ typedef PLATFORM_QUIT(PlatformQuitFn);
 #define PLATFORM_CREATE_WINDOW(n)                                              \
   void n(const char *title, uint32_t x, uint32_t y, uint32_t width,            \
          uint32_t height)
-
 typedef PLATFORM_CREATE_WINDOW(PlatformCreateWindowFn);
+
+#define PLATFORM_ENSURE_AUDIO(n)                                               \
+  unsigned int n(const char *filename, int16_t channel)
+typedef PLATFORM_ENSURE_AUDIO(PlatformEnsureAudioFn);
+
+#define PLATFORM_PLAY_AUDIO(n)                                                 \
+  void n(uint16_t channel, uint8_t fade, int loops, int volume, int duration)
+typedef PLATFORM_PLAY_AUDIO(PlatformPlayAudioFn);
+
+#define PLATFORM_STOP_AUDIO(n) void n(uint16_t channel, int duration, bool fade)
+typedef PLATFORM_STOP_AUDIO(PlatformStopAudioFn);
+
+#define PLATFORM_ENSURE_MUSIC(n) unsigned int n(const char *filename, uint16_t track)
+typedef PLATFORM_ENSURE_MUSIC(PlatformEnsureMusicFn);
+
+#define PLATFORM_PLAY_MUSIC(n) void n(uint16_t track)
+typedef PLATFORM_PLAY_MUSIC(PlatformPlayMusicFn);
+
+#define PLATFORM_STOP_MUSIC(n) void n(uint16_t track)
+typedef PLATFORM_STOP_MUSIC(PlatformStopMusicFn);
+
+#define PLATFORM_SCREENSHOT(n) void n(uint32_t window, int x, int y, int width, int height)
+typedef PLATFORM_SCREENSHOT(PlatformScreenshotFn);
 
 struct PlatformAPI
 {
+  // Draw
   PlatformDrawBoxFn *PlatformDrawBox;
   PlatformEnsureImageFn *PlatformEnsureImage;
-  PlatformEnsureSpritesheetFn *PlatformEnsureSpritesheet;
   PlatformDrawTextureFn *PlatformDrawTexture;
+  PlatformScreenshotFn *PlatformScreenshot;
+  // App
   PlatformQuitFn *PlatformQuit;
   PlatformCreateWindowFn *PlatformCreateWindow;
+  // Sound
+  PlatformEnsureAudioFn *PlatformEnsureAudio;
+  PlatformPlayAudioFn *PlatformPlayAudio;
+  PlatformStopAudioFn *PlatformStopAudio;
+  // Music
+  PlatformEnsureMusicFn *PlatformEnsureMusic;
+  PlatformPlayMusicFn *PlatformPlayMusic;
+  PlatformStopMusicFn *PlatformStopMusic;
 };
 
 //
 // These are all the game functions. These macros help maintain the
 // signature across various places easier.
 //
+
+// This is an optional macro for exporting game funcs
+#define func(a,b) extern "C" a(b)
 
 #define GAME_INIT(n) void n(GameMemory memory, PlatformAPI api, int screen_w, int screen_h)
 typedef GAME_INIT(GameInitFn);
@@ -101,7 +133,7 @@ enum { WINDOW_MAXIMIZED = 1, WINDOW_MINIMIZED = 0 };
 typedef GAME_WINDOW_SHOWN(GameWindowShownFn);
 #define GAME_WINDOW_MOVED(n) void n(uint32_t window, int32_t x, int32_t y)
 typedef GAME_WINDOW_MOVED(GameWindowMovedFn);
-#define GAME_WINDOW_RESIZED(n) void n(uint32_t window, int32_t width, int32_t height)
+#define GAME_WINDOW_RESIZED(n) void n(uint window, int32_t width, int32_t height)
 typedef GAME_WINDOW_RESIZED(GameWindowResizedFn);
 #define GAME_WINDOW_MINMAXED(n) void n(uint32_t window, uint8_t max)
 typedef GAME_WINDOW_MINMAXED(GameWindowMinMaxedFn);
@@ -236,9 +268,15 @@ enum {
   void n(uint32_t id, int8_t sensor, const float *data, uint8_t length)
 typedef GAME_CONTROLLER_SENSOR_EVENT(GameControllerSensorEventFn);
 
-#define GAME_AUDIO_DEVICE_EVENT(n)                                                  \
-  void n(uint32_t id, uint8_t event, uint8_t is_input)
+#define GAME_AUDIO_DEVICE_EVENT(n)                                             \
+  void n(uint32_t id, uint8_t event, uint8_t is_input) 
 typedef GAME_AUDIO_DEVICE_EVENT(GameAudioDeviceEventFn);
+
+#define GAME_AUDIO_CHANNEL_HALTED(n) void n(uint8_t channel)
+typedef GAME_AUDIO_CHANNEL_HALTED(GameAudioChannelHaltedFn);
+
+#define GAME_MUSIC_HALTED(n) void n()
+typedef GAME_MUSIC_HALTED(GameMusicHaltedFn);
 
 enum {
   TOUCH_DEVICE_INVALID = -1,
