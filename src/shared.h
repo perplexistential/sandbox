@@ -58,26 +58,37 @@ typedef PLATFORM_QUIT(PlatformQuitFn);
 typedef PLATFORM_CREATE_WINDOW(PlatformCreateWindowFn);
 
 #define PLATFORM_ENSURE_AUDIO(n)                                               \
-  unsigned int n(const char *filename, int16_t channel)
+  unsigned int n(const char *filename, int32_t channel)
 typedef PLATFORM_ENSURE_AUDIO(PlatformEnsureAudioFn);
 
 #define PLATFORM_PLAY_AUDIO(n)                                                 \
-  void n(uint16_t channel, uint8_t fade, int loops, int volume, int duration)
+  void n(uint32_t channel, uint16_t fade, uint16_t loops, uint8_t volume, uint32_t duration)
 typedef PLATFORM_PLAY_AUDIO(PlatformPlayAudioFn);
 
-#define PLATFORM_STOP_AUDIO(n) void n(uint16_t channel, int duration, bool fade)
+#define PLATFORM_STOP_AUDIO(n) void n(uint32_t channel, int duration, bool fade)
 typedef PLATFORM_STOP_AUDIO(PlatformStopAudioFn);
 
-#define PLATFORM_ENSURE_MUSIC(n) unsigned int n(const char *filename, uint16_t track)
+#define PLATFORM_ENSURE_MUSIC(n) unsigned int n(const char *filename, uint32_t track)
 typedef PLATFORM_ENSURE_MUSIC(PlatformEnsureMusicFn);
 
-#define PLATFORM_PLAY_MUSIC(n) void n(uint16_t track)
+#define PLATFORM_PLAY_MUSIC(n)                                                 \
+  void n(uint32_t track, uint16_t fade, uint16_t loops,			\
+         double position, uint8_t volume)
 typedef PLATFORM_PLAY_MUSIC(PlatformPlayMusicFn);
 
-#define PLATFORM_STOP_MUSIC(n) void n(uint16_t track)
+#define PLATFORM_SET_POSITION_MUSIC(n) void n(double position)
+typedef PLATFORM_SET_POSITION_MUSIC(PlatformSetPositionMusicFn);
+
+#define PLATFORM_REWIND_MUSIC(n) void n()
+typedef PLATFORM_REWIND_MUSIC(PlatformRewindMusicFn);
+
+#define PLATFORM_PAUSE_MUSIC(n) void n()
+typedef PLATFORM_PAUSE_MUSIC(PlatformPauseMusicFn);
+
+#define PLATFORM_STOP_MUSIC(n) void n(uint16_t fade)
 typedef PLATFORM_STOP_MUSIC(PlatformStopMusicFn);
 
-#define PLATFORM_SCREENSHOT(n) void n(uint32_t window, int x, int y, int width, int height)
+#define PLATFORM_SCREENSHOT(n) void n(uint8_t window, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 typedef PLATFORM_SCREENSHOT(PlatformScreenshotFn);
 
 struct PlatformAPI
@@ -97,6 +108,9 @@ struct PlatformAPI
   // Music
   PlatformEnsureMusicFn *PlatformEnsureMusic;
   PlatformPlayMusicFn *PlatformPlayMusic;
+  PlatformSetPositionMusicFn *PlatformSetPositionMusic;
+  PlatformRewindMusicFn *PlatformRewindMusic;
+  PlatformPauseMusicFn *PlatformPauseMusic;
   PlatformStopMusicFn *PlatformStopMusic;
 };
 

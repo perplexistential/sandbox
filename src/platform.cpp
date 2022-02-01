@@ -557,6 +557,7 @@ PLATFORM_PLAY_AUDIO(PlayAudio)
 	 channel, fade, loops, volume, duration);
   if (volume) {
     Mix_Volume(channel, volume);
+    // TODO: Use Mix_VolumeChunk?
   }
   if (fade > 0) { 
     if (duration > 0) {
@@ -635,8 +636,6 @@ PLATFORM_ENSURE_MUSIC(EnsureMusic)
   return audioIndex;
 }
 
-
-
 void musicDone() {
   if (state.game_code.game_music_halted)
     state.game_code.game_music_halted();
@@ -644,12 +643,43 @@ void musicDone() {
 
 PLATFORM_PLAY_MUSIC(PlayMusic)
 {
-  printf("play %d\n", track);
+  printf("play %d fade(%d), loops(%d), position(%f), volume(%d)\n",
+	 track, fade, loops, position, volume);
+  Mix_VolumeMusic(volume);
+  if (fade) {
+    if (position > 0) {
+      Mix_FadeInMusicPos(state.music[track].music, loops, fade, position);
+    } else {
+      Mix_FadeInMusic(state.music[track].music, loops, fade);
+    }
+  } else {
+    if (position > 0) {
+      Mix_FadeInMusicPos(state.music[track].music, loops, 0, position);
+    } else {
+      Mix_PlayMusic(state.music[track].music, loops);
+    }
+  }
+}
+
+PLATFORM_SET_POSITION_MUSIC(SetPositionMusic)
+{
+  Mix_SetMusicPosition(position);
+}
+
+PLATFORM_REWIND_MUSIC(RewindMusic)
+{
+  Mix_RewindMusic();
+}
+
+PLATFORM_PAUSE_MUSIC(PauseMusic)
+{
+  Mix_PausedMusic() ? Mix_ResumeMusic() : Mix_PauseMusic();
 }
 
 PLATFORM_STOP_MUSIC(StopMusic)
 {
-  printf("stop %d\n", track);
+  printf("stop fade(%d)\n", fade);
+  Mix_FadeOutMusic(fade);
 }
 
 PLATFORM_SCREENSHOT(Screenshot)
@@ -714,6 +744,9 @@ PlatformAPI GetPlatformAPI()
     // Music
     api.PlatformEnsureMusic = EnsureMusic;
     api.PlatformPlayMusic = PlayMusic;
+    api.PlatformSetPositionMusic = SetPositionMusic;
+    api.PlatformRewindMusic = RewindMusic;
+    api.PlatformPauseMusic = PauseMusic;
     api.PlatformStopMusic = StopMusic;
     return api;
 }
