@@ -488,7 +488,6 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
     Die("Failed to create window: %s\n", SDL_GetError());
   }
   state.windows[state.window_count] = new_win;
-
   // using OpenGL render context
   state.gl_context[state.window_count] = SDL_GL_CreateContext(state.windows[0]); 
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -660,83 +659,39 @@ PLATFORM_SCREENSHOT(Screenshot)
    * thanks to Dave for this screenshot magic
    * flux-compose: https://github.com/FluxHarmonic/flux-compose/blob/master/lib/graphics.c
    */
-
   // TODO: The screenshot should target a specific Window
-  printf("Screenshotting window 0, ignoring that %d was requested", window);
-  
   int i = 0;
   unsigned char *screen_bytes = NULL;
   unsigned char *image_bytes = NULL;
   size_t image_row_length = 4 * width;
   size_t image_data_size = sizeof(*image_bytes) * image_row_length * height;
   char output_file_path[40];
-  snprintf(output_file_path, sizeof(output_file_path), "%s/screenshot_%d",
+  snprintf(output_file_path, sizeof(output_file_path), "%s/screenshot_%d.png",
 	   SCREENSHOTS_DIR, (int)time(NULL));
-  
-  printf("Rendering window(%d,%d) of size %u / %u to file: %s\n", x, y, width, height, output_file_path);
-  
   // Allocate storage for the screen bytes
-  // TODO: reduce memory allocation requirements
   screen_bytes = (unsigned char *)malloc(image_data_size);
   image_bytes = (unsigned char *)malloc(image_data_size);
-  
-  // TODO: Switch context to this window
-  
   // Store the screen contents to a byte array
-  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, screen_bytes);
-  
+  glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, screen_bytes);
   // Flip the rows of the byte array because OpenGL's coordinate system is flipped
   for (i = 0; i < height; i++) {
     memcpy(&image_bytes[image_row_length * i], &screen_bytes[image_row_length * (height - (i + 1))], sizeof(*image_bytes) * image_row_length);
   }
-
-  //IMG_SavePNG(SDL_Surface *surface, const char *file)
-  
-  /*
-  // Save image data to a PNG file
-  FILE *out_file;
-  
-  struct spng_ihdr header;
-  int ret = 0;
-
-  out_file = fopen(output_file_path, "wb");
-
-  memset(&header, 0, sizeof(header));
-  header.width = width;
-  header.height = height;
-  header.bit_depth = 8;
-  header.color_type = SPNG_COLOR_TYPE_TRUECOLOR_ALPHA;
-
-  spng_ctx *ctx = NULL;
-  ctx = spng_ctx_new(SPNG_CTX_ENCODER);
-  spng_set_option(ctx, SPNG_ENCODE_TO_BUFFER, 0);
-
-  ret = spng_set_ihdr(ctx, &header);
-
-  if (ret) {
-    printf("Error setting PNG header data: %s\n", spng_strerror(ret));
+  SDL_Surface *surface = NULL;
+  surface = SDL_CreateRGBSurfaceWithFormatFrom(image_bytes,
+					       state.screen_w,
+					       state.screen_h,
+					       32, 4*state.screen_w,
+					       SDL_PIXELFORMAT_RGBA32);
+  if (NULL == surface) {
+    printf("unable to create surface for screenshot: %s\n", SDL_GetError());
+  } else {
+    if (IMG_SavePNG(surface, output_file_path) != 0) {
+      printf("unable to save PNG to %s\n", output_file_path);
+    }
   }
-
-  ret = spng_set_png_file(ctx, out_file);
-
-  if (ret) {
-    printf("Error setting PNG output file: %s\n", spng_strerror(ret));
-  }
-
-  ret = spng_encode_image(ctx, image_bytes, sizeof(*image_bytes) * 4 * width * height, SPNG_FMT_PNG,
-                          SPNG_ENCODE_FINALIZE);
-
-  if (ret) {
-    printf("Error encoding PNG data: %s\n", spng_strerror(ret));
-  }
-
-  // TODO: Clean up context, etc
-
-  fflush(out_file);
-  fclose(out_file);
-  */
-  
-  // Clean up the memory
+  printf("screenshot taken of window(%d): %s\n", window, output_file_path);
+  SDL_FreeSurface(surface);
   free(image_bytes);
   free(screen_bytes);
 }
@@ -1203,7 +1158,8 @@ int main(int argc, char *argv[])
   // print the number of music decoders available
   printf("There are %d music deocoders available\n", Mix_GetNumMusicDecoders());
   state.window_count = 0;
-  
+  state.screen_w = SCREEN_WIDTH;
+  state.screen_h = SCREEN_HEIGHT;
   CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
   // get version info
   const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string

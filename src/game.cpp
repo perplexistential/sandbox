@@ -196,6 +196,8 @@ struct Controller
   int action_queue[10];
 };
 
+
+
 struct GameState
 {
   GameMemory memory;
@@ -359,7 +361,7 @@ extern "C" GAME_UPDATE(GameUpdate)
       // Determine the next x and y bounding boxes
       BoundingBox bb_next_x = {
 	0,0,state->boxes[c].x + speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
-	state->boxes[c].y, state->boxes[c].width, state->boxes[c].height,
+	state->boxes[c].y, state->boxes[c].width, state->boxes[c].height,0, 0
       };
       BoundingBox bb_next_y = {
 	0,0,state->boxes[c].x,
@@ -415,6 +417,7 @@ extern "C" GAME_UPDATE(GameUpdate)
       state->character.bb.y,
       state->character.bb.width,
       state->character.bb.height,
+      0,0
     };
     BoundingBox bb_next_y = {
       0,0,
