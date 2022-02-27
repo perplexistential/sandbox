@@ -1,13 +1,13 @@
 #include <bits/types/time_t.h>
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
 #include "shared.h"
 
-struct BoundingBox
+typedef struct
 {
   float accel_x;
   float accel_y;
@@ -25,7 +25,7 @@ struct BoundingBox
   float accel_b;
   float a;
   float accel_a;
-};
+} BoundingBox;
 
 #define COLOR_SHIFT_RATE 0.2
 
@@ -73,10 +73,10 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
 #define CHARACTER_DEMO_ENABLED true
 #define CHARACTER_DEMO_SPRITE "as_.png"
 
-struct SpriteFrame
+typedef struct
 {
   uint16_t x, y, width, height;
-};
+} SpriteFrame;
 
 #define FACING_DOWN_STEP_0                                                     \
   { .x = 113, .y = 160, .width = 16, .height = 32 }
@@ -145,7 +145,7 @@ const SpriteFrame *CHAR_ANIMATION_FRAMES[NUMBER_OF_FACING_DIRS] = {
     CHAR_FACING_LEFT,
 };
 
-struct Character
+typedef struct
 {
   unsigned int textureIndex;
   BoundingBox bb;
@@ -155,7 +155,7 @@ struct Character
   bool walking;
   bool falling;
   bool crouched;
-};
+} Character;
 
 const SpriteFrame* getSpriteFrame(Character *c) {
   return &(CHAR_ANIMATION_FRAMES[c->facing][(int)(floor(c->current_frame))]);
@@ -168,43 +168,51 @@ enum {
   CONTROLLER_DOWN,
   CONTROLLER_LEFT,
   CONTROLLER_RIGHT,
-  CONTROLLER_RUN,
+  CONTROLLER_JUMP,
   CONTROLLER_FIRE,
   CONTROLLER_MENU,
-  CONTROLLER_CONTEXT_MENU,
   CONTROLLER_PAUSE,
   CONTROLLER_TRIGGER_L,
   CONTROLLER_TRIGGER_R,
+  CONTROLLER_SIZE,
 };
 
-struct Controller
-{
-  int up, down, left, right;
-  int jump;
-  int run;
-  int fire;
-  int menu;
-  int context_menu;
-  int pause;
-  int trigger_l, trigger_r;
+const unsigned int button_map[CONTROLLER_SIZE] = {
+  K_w,
+  K_s,
+  K_a,
+  K_d,
+  K_SPACE,
+  K_ESCAPE,
+  K_p,
+  K_q,
+  K_e,
+  K_UNKNOWN,
+};
 
-  int menu_open;
+typedef struct
+{
+
+  unsigned int state[CONTROLLER_SIZE];
+  unsigned int previous[CONTROLLER_SIZE];
 
   float pointer_x, pointer_y;
 
   float action_queue_timer;
   int action_queue[10];
-};
+} Controller;
 
+#define AUDIO_DEMO_ENABLED false
 
-
-struct GameState
+typedef struct
 {
   GameMemory memory;
   PlatformAPI api;
 
   // Window meta
   int screen_w, screen_h;
+
+  bool onlyOnceInit;
   
   // Collision Demo
   bool collisionDemoInitialized;
@@ -220,14 +228,19 @@ struct GameState
   // User Input Demo
   bool keyboardDemoInitialized;
   Controller controller;
-};
+  
+  bool audioDemoInitialized;
 
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
+  bool showMenu;
+  bool paused;
+} GameState;
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 static GameState *state;
 
-BoundingBox newDemoBB(unsigned int c)
+void newDemoBB(BoundingBox *bb, unsigned int c)
 {
   float x = 60.0f,y = 60.0f;
 
@@ -257,35 +270,32 @@ BoundingBox newDemoBB(unsigned int c)
       y = state->screen_h - 60.0f;
     }
   }
-  return {
-    .accel_x = rand() % 9 % 2 == 0 ? -1.0f : 1.0f,
-    .accel_y = rand() % 9 % 2 == 0 ? 1.0f : -1.0f,
-    .x = x,
-    .y = y,
-    .width = 5.0f,
-    .height = 5.0f,
-    .veloc_x = (rand() % (c+1)) * 0.020f,
-    .veloc_y = (rand() % (c+1)) * 0.020f,
-    .r=0.3f * (rand() % 9),
-    .accel_r=1.0f,
-    .g=0.0f * (rand() % 9),
-    .accel_g=0.0f,
-    .b=0.0f * (rand() % 9),
-    .accel_b=0.0f,
-    .a=0.25,
-    .accel_a=1.0f,
-  };
+  bb->accel_x = rand() % 9 % 2 == 0 ? -1.0f : 1.0f;
+  bb->accel_y = rand() % 9 % 2 == 0 ? 1.0f : -1.0f;
+  bb->x = x;
+  bb->y = y;
+  bb->width = 5.0f;
+  bb->height = 5.0f;
+  bb->veloc_x = (rand() % (c+1)) * 0.020f;
+  bb->veloc_y = (rand() % (c+1)) * 0.020f;
+  bb->r=0.3f * (rand() % 9);
+  bb->accel_r=1.0f;
+  bb->g=0.0f * (rand() % 9);
+  bb->accel_g=0.0f;
+  bb->b=0.0f * (rand() % 9);
+  bb->accel_b=0.0f;
+  bb->a=0.25;
+  bb->accel_a=1.0f;
 }
 
-BoundingBox newBB(float x, float y, float w, float h)
+void newBB(BoundingBox *bb, float x, float y, float w, float h)
 {
-  BoundingBox bb = newDemoBB(0);
-  bb.x = x;
-  bb.y = y;
-  bb.width = w;
-  bb.height = h;
-  bb.a = 0.5f;
-  return bb;
+  newDemoBB(bb, 0);
+  bb->x = x;
+  bb->y = y;
+  bb->width = w;
+  bb->height = h;
+  bb->a = 0.5f;
 }
 
 func(GAME_WINDOW_RESIZED, GameWindowResized)
@@ -295,32 +305,45 @@ func(GAME_WINDOW_RESIZED, GameWindowResized)
   state->screen_h = height;
 }
 
-extern "C" GAME_QUIT(GameQuit)
+extern GAME_QUIT(GameQuit)
 {
   printf("game: got a quit - gonna take a screenshot\n");
   state->api.PlatformScreenshot(0, 0, 0, state->screen_w, state->screen_h);
 }
 
 
-extern "C" GAME_INIT(GameInit)
-{
+extern GAME_INIT(GameInit)
+{ 
   state = GameAllocateStruct(&memory, GameState);
   state->api = api;
   if(state->memory.ptr == 0) {
     state->memory = memory;
   }
+
+  if(!state->onlyOnceInit) {
+    state->onlyOnceInit = true;
+    memset(&state->controller, 0, sizeof(Controller));
+    state->paused = false;
+  }
+  
   state->screen_w = screen_w;
   state->screen_h = screen_h;
 
-  state->collisionDemoInitialized = false;
+  if (AUDIO_DEMO_ENABLED && !state->audioDemoInitialized) {
+    state->api.PlatformEnsureMusic("Stormcrow56k_-_my_old_man.mp3", 0);
+    state->api.PlatformEnsureMusic("Stormcrow56k_-_temaczal.mp3", 1);
+    state->api.PlatformEnsureAudio("ByMennen.wav", 0);
+    state->api.PlatformEnsureAudio("bird_caw1.wav", 1);
+  }
+  
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
     //srand(37);
     state->collisionDemoInitialized = true;
-    state->wall = newBB(300.0f, 100.0f, 50.0f, 200.0f);
-    state->ground = newBB(0.0f, 0.0f, 1.0f*state->screen_w, 30.0f);
+    newBB(&state->wall, 300.0f, 100.0f, 50.0f, 200.0f);
+    newBB(&state->ground, 0.0f, 0.0f, 1.0f*state->screen_w, 30.0f);
     for (unsigned int c=0; c < COLLISION_DEMO_INITIAL_BOX_COUNT; c++) {
       memset(&state->boxes[c], 0, sizeof(BoundingBox));
-      state->boxes[c] = newDemoBB(c);
+      newDemoBB(&state->boxes[c],c);
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
   }
@@ -328,7 +351,8 @@ extern "C" GAME_INIT(GameInit)
   if (CHARACTER_DEMO_ENABLED && !state->characterDemoInitialized) {
     state->characterDemoInitialized = true;
     memset(&state->character, 0, sizeof(Character));
-    state->character.textureIndex = state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE);
+    state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE, 0);
+    state->character.textureIndex = 0;
     state->character.bb.x = 150;
     state->character.bb.y = 250;
     state->character.bb.width = 64;
@@ -350,13 +374,31 @@ float speed(float accel, float dt, float velocity)
 void shiftColor(float* c, float* accel, float dt)
 {
   *c += *accel * (dt * COLOR_SHIFT_RATE * (rand() % 9));
-  if (*c >= 0.7f || *c <= 0.3f)
+  if (*c >= 0.9f || *c <= 0.1f)
     *accel *= -1.0f;
 }
 
-extern "C" GAME_UPDATE(GameUpdate)
+extern GAME_UPDATE(GameUpdate)
 {
-  if (COLLISION_DEMO_ENABLED) {
+
+  if (state->controller.state[CONTROLLER_PAUSE] &&
+      state->controller.state[CONTROLLER_PAUSE] != state->controller.previous[CONTROLLER_PAUSE]) {
+    state->paused = !state->paused;
+  }
+
+  if (AUDIO_DEMO_ENABLED) {
+    // Pause music
+    if (state->paused) {
+      state->api.PlatformPauseMusic();
+      state->api.PlatformPlayAudio(0, 0, 1, 100, 0);
+      state->api.PlatformPlayMusic(1, 5, 0, 0.0f, 100, false);
+    } else {
+      state->api.PlatformStopMusic(0);
+      state->api.PlatformPlayMusic(0, 0, 0, 0.0f, 100, true);
+    }
+  }
+
+  if (COLLISION_DEMO_ENABLED && !state->paused) {
     for (unsigned int c=0; c < state->boxCount; c++){
       // Determine the next x and y bounding boxes
       BoundingBox bb_next_x = {
@@ -405,11 +447,11 @@ extern "C" GAME_UPDATE(GameUpdate)
       shiftColor(&state->boxes[c].r, &state->boxes[c].accel_r, dt);
       shiftColor(&state->boxes[c].g, &state->boxes[c].accel_g, dt);
       shiftColor(&state->boxes[c].b, &state->boxes[c].accel_b, dt);
-      //shiftColor(&state->boxes[c].a, &state->boxes[c].accel_a, dt);
+      shiftColor(&state->boxes[c].a, &state->boxes[c].accel_a, dt);
     }
   }
 
-  if (CHARACTER_DEMO_ENABLED) {
+  if (CHARACTER_DEMO_ENABLED && !state->paused) {
     // Determine the next x and y bounding boxes
     BoundingBox bb_next_x = {
       0,0,
@@ -462,16 +504,16 @@ extern "C" GAME_UPDATE(GameUpdate)
     
     // "2" = the number of walking animation frames.
     // "1 +" because the frame at 0 is the stand ing animation frame
-    state->character.current_frame += (dt / (1.0 / abs(*speed))) * 10;
+    state->character.current_frame += (dt / (1.0 / abs((int)floor(*speed)))) * 10;
     if (state->character.current_frame >= 2){
       state->character.current_frame = 0;
     }
-    
   }
+  memcpy(&state->controller.previous, &state->controller.state, sizeof(state->controller.state));
+  memset(&state->controller.state, 0, sizeof(state->controller.state));
 }
 
-
-extern "C" GAME_RENDER(GameRender)
+extern GAME_RENDER(GameRender)
 {
     state->api.PlatformDrawBox(state->wall.x, state->wall.y, state->wall.width, state->wall.height,
 			       state->wall.r, state->wall.g, state->wall.b, state->wall.a);
@@ -499,12 +541,17 @@ extern "C" GAME_RENDER(GameRender)
     }
 }
 
-extern "C" GAME_KEYBOARD_INPUT(GameKeyboardInput)
+extern GAME_KEYBOARD_INPUT(GameKeyboardInput)
 {
-  
+  for (unsigned int i=0; i < CONTROLLER_SIZE; i++) {
+    if (SCANCODE_TO_KEYCODE(symbol) == button_map[i]){
+      state->controller.state[i] = key_state;
+      break;
+    }
+  }
 }
 
-extern "C" GAME_AUDIO_CHANNEL_HALTED(GameAudioChannelHalted)
+extern GAME_CHANNEL_HALTED(GameAudioChannelHalted)
 {
   printf("%d audio channel halted\n", channel);
 }

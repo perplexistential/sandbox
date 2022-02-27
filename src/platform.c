@@ -1,6 +1,6 @@
 #include <assert.h>
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +20,7 @@
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_surface.h>
+#include <SDL2/SDL_net.h>
 
 #include <GL/glut.h>
 
@@ -39,7 +40,7 @@
 #define MUSIC_DIR "assets/music"
 #define SCREENSHOTS_DIR "screenshots"
 
-struct GameCode
+typedef struct
 {
   GameInitFn *game_init;
   GameUpdateFn *game_update;
@@ -71,7 +72,7 @@ struct GameCode
   GameControllerSensorEventFn *game_controller_sensor_event;
   GameControllerTouchpadEventFn *game_controller_touchpad_event;
   GameAudioDeviceEventFn *game_audio_device_event;
-  GameAudioChannelHaltedFn *game_audio_channel_halted;
+  GameChannelHaltedFn *game_channel_halted;
   GameMusicHaltedFn *game_music_halted;
   GameTouchFingerEventFn *game_touch_finger_event;
   GameDropEventFn *game_drop_event;
@@ -80,31 +81,39 @@ struct GameCode
   
   void* handle;
   time_t last_file_time;
-};
+} GameCode;
 
-struct Texture
+typedef struct
 {
-  char filename[MAX_FILENAME_LENGTH];
-  // ...if filename is overloaded, it'll probably wreck this GLuint first... have fun!
   GLuint textureID;
-};
+} Texture;
 
 #define MAX_AUDIOS 500
 #define MAX_MUSIC 100
 
-struct Audio
+typedef struct
 {
-  char filename[MAX_FILENAME_LENGTH];
   Mix_Chunk *chunk;
   int channel;  // This is "int" because SDL_mixer uses it
-};
+} Audio;
 
-struct Music
+typedef struct
 {
-  char filename[MAX_FILENAME_LENGTH];
   Mix_Music *music;
   int track;
-};
+} Music;
+
+#define MAX_SOCKETS 25
+
+typedef struct {
+  union {
+    TCPsocket tcp;
+    UDPsocket udp;
+  } socket;
+  IPaddress address;
+  uint8_t socket_type;
+  int channel;
+} Connection;
 
 static struct
 {
@@ -124,6 +133,9 @@ static struct
   // Music
   Music music[MAX_MUSIC];
   int track_count;
+  // Net
+  Connection sockets[MAX_SOCKETS];
+  int socket_count;
 } state;
 
 
@@ -291,9 +303,9 @@ GameCode LoadGameCode(const char *path)
 	  result.game_audio_device_event = NULL;
 	}
  
-	result.game_audio_channel_halted = (GameAudioChannelHaltedFn *)dlsym(result.handle, "GameAudioChannelHalted");
+	result.game_channel_halted = (GameChannelHaltedFn *)dlsym(result.handle, "GameChannelHalted");
 	if ((error = dlerror()) != NULL) {
-	  result.game_audio_channel_halted = NULL;
+	  result.game_channel_halted = NULL;
 	}
 	
 	result.game_music_halted = (GameMusicHaltedFn *)dlsym(result.handle, "GameMusicHalted");
@@ -359,7 +371,7 @@ void UnloadGameCode(GameCode *game_code)
   game_code->game_controller_sensor_event = 0;
   game_code->game_controller_touchpad_event = 0;
   game_code->game_audio_device_event = 0;
-  game_code->game_audio_channel_halted = 0;
+  game_code->game_channel_halted = 0;
   game_code->game_music_halted = 0;
   game_code->game_touch_finger_event = 0;
   game_code->game_drop_event = 0;
@@ -407,32 +419,12 @@ void opengl_load_texture(int textureIndex, const char *imagePath)
 
 PLATFORM_ENSURE_IMAGE(EnsureImage)
 {
-  bool found = false;
-  int textureIndex = -1;
-  int imagePathLength = strlen(IMAGES_DIR)+strlen(filename) + 1;
-  char *imagePath = (char *) malloc(imagePathLength * sizeof(char));
-  sprintf(imagePath, "%s/%s", IMAGES_DIR, filename);
-  for(unsigned int i=0; i < MAX_SURFACES; i++){
-    if (textureIndex == -1 && state.textures[i].textureID == 0){
-      textureIndex = i;
-    }
-    if (0 == strncmp(state.textures[i].filename, filename, MAX_FILENAME_LENGTH)) {
-      found = true;
-      textureIndex = i;
-    }
-    if (found && -1 != textureIndex) {
-      break;
-    }
-  }
-  if (-1 == textureIndex) {
-    Die("no space left to load the image: %s", filename);
-  }
-  if (!found) {
-    opengl_load_texture(textureIndex, imagePath);
-    strncpy(state.textures[textureIndex].filename, filename, MAX_FILENAME_LENGTH);
-  }
+  int imagePathLength = strlen(IMAGES_DIR)+strlen(filename) + 1; // +1 for the "/"
+  size_t imagePathSize = imagePathLength * sizeof(char)+ 1; // +1 for null terminator
+  char *imagePath = (char *) malloc(imagePathSize);
+  snprintf(imagePath, imagePathSize, "%s/%s", IMAGES_DIR, filename);
+  opengl_load_texture(textureID, imagePath);
   free(imagePath);
-  return textureIndex;
 }
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
@@ -472,13 +464,15 @@ PLATFORM_DRAW_TEXTURE(DrawTexture)
 }
 
 PLATFORM_QUIT(QuitGame) {
+  SDLNet_Quit();
   Mix_CloseAudio();
   Quit();
 }
 
 PLATFORM_CREATE_WINDOW(CreateWindow) {
+  int index = MAX_WINDOWS;
   if (state.window_count > MAX_WINDOWS) {
-    return;
+    return index;
   }
   
   SDL_Window *new_win = SDL_CreateWindow(title,
@@ -494,17 +488,23 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glOrtho(0.0f, 1.0f*width, 0.0f, 1.0f*height, 0.0f, 1.0f);
+  index = state.window_count;
   state.window_count++;
+  return index;
 }
 
 void sdl_load_audio(int audioIndex, const char *audioPath)
 {
   Mix_Chunk *chunk = Mix_LoadWAV(audioPath);
-  if (chunk) {
-    Die("failed to load audio: %s\n", audioPath);
+  if (!chunk) {
+    Die("failed to load audio %s: %s\n", audioPath, Mix_GetError());
+  }
+  if (NULL != state.audio[audioIndex].chunk) {
+    Mix_FreeChunk(state.audio[audioIndex].chunk);
+  } else {
+    state.audio[audioIndex].channel = state.channel_count++;
   }
   state.audio[audioIndex].chunk = chunk;
-  state.audio[audioIndex].channel = state.channel_count++;
 }
 
 void sdl_load_music(int musicIndex, const char *musicPath)
@@ -512,42 +512,24 @@ void sdl_load_music(int musicIndex, const char *musicPath)
   Mix_Music *music;
   music = Mix_LoadMUS(musicPath);
   if(!music) {
-    Die("failed to load music: %s\n", musicPath);
+    Die("failed to load music %s: %s\n", musicPath, Mix_GetError());
+  }
+  if (NULL != state.music[musicIndex].music) {
+    Mix_FreeMusic(state.music[musicIndex].music);
+  } else {
+    state.music[musicIndex].track = state.track_count++;
   }
   state.music[musicIndex].music = music;
-  state.music[musicIndex].track = state.track_count++;
 }
 
 PLATFORM_ENSURE_AUDIO(EnsureAudio)
 {
-  int audioIndex = -1;
   printf("file(%s), channel(%d)\n", filename, channel);
-  bool found = false;
   int audioPathLength = strlen(AUDIO_DIR)+strlen(filename) + 1;
   char *audioPath = (char *) malloc(audioPathLength * sizeof(char));
-  sprintf(audioPath, "%s/%s", AUDIO_DIR, filename);
-
-  for(unsigned int i=0; i < MAX_SURFACES; i++){
-    if (audioIndex == -1 && state.audio[i].channel == 0){
-      audioIndex = i;
-    }
-    if (0 == strncmp(state.audio[i].filename, filename, MAX_FILENAME_LENGTH)) {
-      found = true;
-      audioIndex = i;
-    }
-    if (found && -1 != audioIndex) {
-      break;
-    }
-  }
-  if (-1 == audioIndex) {
-    Die("no space left to load the image: %s", filename);
-  }
-  if (!found) {
-    sdl_load_audio(audioIndex, audioPath);
-    strncpy(state.audio[audioIndex].filename, filename, MAX_FILENAME_LENGTH);
-  }
+  snprintf(audioPath, audioPathLength*sizeof(char), "%s/%s", AUDIO_DIR, filename);
+  sdl_load_audio(channel, audioPath);
   free(audioPath);
-  return audioIndex;
 }
 
 PLATFORM_PLAY_AUDIO(PlayAudio)
@@ -600,40 +582,18 @@ PLATFORM_STOP_AUDIO(StopAudio)
 }
 
 void channelDone(int channel) {
-  if (state.game_code.game_audio_channel_halted)
-    state.game_code.game_audio_channel_halted(channel);
+  if (state.game_code.game_channel_halted)
+    state.game_code.game_channel_halted(channel);
 }
 
 PLATFORM_ENSURE_MUSIC(EnsureMusic)
 {
-  int audioIndex = -1;
   printf("file(%s), channel(%d)\n", filename, track);
-  bool found = false;
   int audioPathLength = strlen(MUSIC_DIR)+strlen(filename) + 1;
   char *audioPath = (char *) malloc(audioPathLength * sizeof(char));
-  sprintf(audioPath, "%s/%s", MUSIC_DIR, filename);
-
-  for(unsigned int i=0; i < MAX_SURFACES; i++){
-    if (audioIndex == -1 && state.music[i].track == 0){
-      audioIndex = i;
-    }
-    if (0 == strncmp(state.music[i].filename, filename, MAX_FILENAME_LENGTH)) {
-      found = true;
-      audioIndex = i;
-    }
-    if (found && -1 != audioIndex) {
-      break;
-    }
-  }
-  if (-1 == audioIndex) {
-    Die("no space left to load the image: %s", filename);
-  }
-  if (!found) {
-    sdl_load_music(audioIndex, audioPath);
-    strncpy(state.music[audioIndex].filename, filename, MAX_FILENAME_LENGTH);
-  }
+  snprintf(audioPath, audioPathLength*sizeof(char), "%s/%s", MUSIC_DIR, filename);
+  sdl_load_music(track, audioPath);
   free(audioPath);
-  return audioIndex;
 }
 
 void musicDone() {
@@ -726,6 +686,140 @@ PLATFORM_SCREENSHOT(Screenshot)
   free(screen_bytes);
 }
 
+
+
+PLATFORM_LISTEN_AND_SERVE(ListenAndServe)
+{
+  if (MAX_SOCKETS <= state.socket_count) {
+    printf("server count cannot exceed %d\n", MAX_SOCKETS);
+  }
+  unsigned int index = state.socket_count;
+  
+  memset(&state.sockets[index].address, 0, sizeof(IPaddress));
+  for (int c=0; c<5; c++){
+    switch(socket_type){
+    case SOCKET_TCP:
+      if(SDLNet_ResolveHost(&state.sockets[index].address,NULL,port)==-1) {
+	printf("SDLNet_ResolveHost: %s\n", SDLNet_GetError());
+      }
+      state.sockets[index].socket.tcp = SDLNet_TCP_Open(&state.sockets[index].address);
+      if (state.sockets[index].socket.tcp) {
+	state.socket_count++;
+	return index;
+      }
+      break;
+    case SOCKET_UDP:
+      state.sockets[index].socket.udp = SDLNet_UDP_Open(port);
+      if (state.sockets[index].socket.udp) {
+	int channel = SDLNet_UDP_Bind(state.sockets[index].socket.udp,
+				      -1, &state.sockets[index].address);
+	if(channel==-1) {
+	  printf("SDLNet_UDP_Bind: %s\n", SDLNet_GetError());
+	  return index;
+	}
+	state.sockets[index].channel = channel;
+	state.socket_count++;
+	return index;
+      }
+      break;
+    default:
+      Die("unknown socket type: %d\n", socket_type);
+    }
+  }
+  printf("failed to create %s server socket listening on port %d\n",
+	 socket_type == SOCKET_TCP ? "TCP" : "UDP", port);
+  return MAX_SOCKETS;
+}
+
+PLATFORM_CONNECT_TO_SERVER(ConnectToServer)
+{
+  unsigned int index = state.socket_count;
+  memset(&state.sockets[index].address, 0, sizeof(IPaddress));
+  switch(socket_type){
+  case SOCKET_TCP:
+    if (host != NULL) {
+      if(SDLNet_ResolveHost(&state.sockets[index].address,host,port)==-1) {
+	printf("SDLNet_ResolveHost: %s\n", SDLNet_GetError());
+      }
+    }
+    state.sockets[index].socket.tcp = SDLNet_TCP_Open(&state.sockets[index].address);
+    if (state.sockets[index].socket.tcp) {
+      state.socket_count++;
+      return index;
+    }
+    break;
+  case SOCKET_UDP:
+    state.sockets[index].socket.udp = SDLNet_UDP_Open(port);
+    if (state.sockets[index].socket.udp) {
+      state.socket_count++;
+      return index;
+    }
+    break;
+  }
+  return MAX_SOCKETS;
+}
+
+PLATFORM_NET_SEND(NetSend)
+{
+  UDPpacket *packet = NULL;
+  switch(state.sockets[socket].socket_type) {
+  case SOCKET_TCP:
+    if(SDLNet_TCP_Send(state.sockets[socket].socket.tcp, message, length) <= length) {
+      printf("tcp send: %s\n", SDLNet_GetError());
+    }
+    break;
+  case SOCKET_UDP:
+    packet = SDLNet_AllocPacket(length);
+    if(!packet) {
+      printf("failed to allocate packet: %s\n", SDLNet_GetError());
+    } else {
+      packet->data = (Uint8*)message;
+      if (!SDLNet_UDP_Send(state.sockets[socket].socket.udp, packet->channel, packet)){
+	printf("failed to send packet: no data sent\n");
+      }
+    }
+    SDLNet_FreePacket(packet);
+    break;
+  }
+}
+
+PLATFORM_NET_RECV(NetRecv)
+{
+  UDPpacket *packet;
+
+  switch(state.sockets[socket].socket_type){
+  case SOCKET_TCP:
+    if ( 0 >= SDLNet_TCP_Recv(state.sockets[socket].socket.tcp, received, length)) {
+      printf("no data received\n");
+    }
+    break;
+  case SOCKET_UDP:  
+    packet = SDLNet_AllocPacket(length);
+    if(!packet) {
+      printf("failed to allocate packet: %s\n", SDLNet_GetError());
+    } else {
+      packet->data = (Uint8*)received;
+      if (!SDLNet_UDP_Recv(state.sockets[socket].socket.udp, packet)){
+	printf("failed to send packet: no data sent\n");
+      }
+    }
+    SDLNet_FreePacket(packet);
+    break;
+  }
+}
+
+PLATFORM_CLOSE_CONNECTION(CloseConnection)
+{
+  switch(state.sockets[socket].socket_type) {
+  case SOCKET_TCP:
+    SDLNet_TCP_Close(state.sockets[socket].socket.tcp);
+    break;
+  case SOCKET_UDP:
+    SDLNet_UDP_Close(state.sockets[socket].socket.udp);
+    break;
+  };
+}
+
 PlatformAPI GetPlatformAPI()
 {
     PlatformAPI api = {};
@@ -748,6 +842,12 @@ PlatformAPI GetPlatformAPI()
     api.PlatformRewindMusic = RewindMusic;
     api.PlatformPauseMusic = PauseMusic;
     api.PlatformStopMusic = StopMusic;
+    // Net
+    api.PlatformListenAndServe = ListenAndServe;
+    api.PlatformConnectToServer = ConnectToServer;
+    api.PlatformNetSend = NetSend;
+    api.PlatformNetRecv = NetRecv;
+    api.PlatformCloseConnection = CloseConnection;
     return api;
 }
 
@@ -1139,6 +1239,8 @@ void GameLoop()
 	break;
       }
     }
+
+    // If there are servers, 
     
     state.game_code.game_update(1.0f/60.0f);
     
@@ -1162,29 +1264,45 @@ void GameLoop()
   }
 }
 
+
 int main(int argc, char *argv[])
 {
+  memset(&state, 0, sizeof(state));
   for (int c = 0; c < argc; c++) {
     printf("%c\n", *argv[c]);
   }
   if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
-    Die("Failed to initialize SDL2: %s\n", SDL_GetError());
+    Die("failed to initialize SDL2: %s\n", SDL_GetError());
   }
   // Image loading support
   if(IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP) < 0) {
-    Die("Failed to initialize Image support: %s\n", IMG_GetError());
+    Die("failed to initialize Image support: %s\n", IMG_GetError());
   }
   // TODO: MIX_INIT_MIDI?
   if(Mix_Init(MIX_INIT_FLAC | MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_MOD | MIX_INIT_OPUS) < 0) {
-    Die("Failed to initialize Mixer support: %s\n", Mix_GetError());
+    Die("failed to initialize Mixer support: %s\n", Mix_GetError());
   }
+  if(SDLNet_Init() == -1) {
+    Die("failed to initialize SDLNet support", SDLNet_GetError());
+  }
+  SDL_version compile_version;
+  const SDL_version *link_version=SDLNet_Linked_Version();
+  SDL_NET_VERSION(&compile_version);
+  printf("Compiled with SDL_net version: %d.%d.%d\n", 
+	 compile_version.major,
+	 compile_version.minor,
+	 compile_version.patch);
+  printf("Running with SDL_net version: %d.%d.%d\n", 
+	 link_version->major,
+	 link_version->minor,
+	 link_version->patch);
   // open 44.1KHz, signed 16bit, system byte order,
   //      stereo audio, using 1024 byte chunks
   if(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024)==-1) {
     Die("Mix_OpenAudio: %s\n", Mix_GetError());
   }
   if(0 > Mix_AllocateChannels(200)){
-    Die("Failed to allocate audio channels: %s\n", Mix_GetError());
+    Die("failed to allocate audio channels: %s\n", Mix_GetError());
   }
   Mix_ChannelFinished(channelDone);
   Mix_HookMusicFinished(musicDone);
