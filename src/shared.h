@@ -1,3 +1,6 @@
+#ifndef SHARED_H
+#define SHARED_H
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -528,15 +531,17 @@ enum {
 
 // All game memory is encapsuled in this struct. It uses the basic
 // technique of stack allocation.
-typedef struct GameMemory
+typedef struct
 {
     uint8_t *ptr;
     uint8_t *cursor;
     size_t size;
-} GameMemory;
+} MemoryBlock;
+
+
 
 // Allocate a block of memory
-void *GameAllocateMemory(GameMemory *memory, size_t size)
+void *AllocateMemoryBlock(MemoryBlock *memory, size_t size)
 {
   void *result = memory->cursor;
   memory->cursor += size;
@@ -545,9 +550,8 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
 
 // Simple helper macro to make allocation of structs easier, you
 // could also use a template for this
-#define GameAllocateStruct(memory, type)                                       \
-  (type *)GameAllocateMemory(memory, sizeof(type))
-
+#define AllocateMemory(memory, type)                                       \
+  (type *)AllocateMemoryBlock(memory, sizeof(type))
 
 // Demonstration boxes
 #define PLATFORM_DRAW_BOX(n)                                                   \
@@ -632,6 +636,7 @@ typedef PLATFORM_NET_RECV(PlatformNetRecvFn);
 #define PLATFORM_CLOSE_CONNECTION(n) void n(unsigned int socket)
 typedef PLATFORM_CLOSE_CONNECTION(PlatformCloseConnectionFn);
 
+
 typedef struct
 {
   // Draw
@@ -666,10 +671,8 @@ typedef struct
 // signature across various places easier.
 //
 
-// This is an optional macro for exporting game funcs
-#define func(a,b) extern a(b)
 
-#define GAME_INIT(n) void n(GameMemory memory, PlatformAPI api, int screen_w, int screen_h)
+#define GAME_INIT(n) void n(MemoryBlock memory, PlatformAPI api, int screen_w, int screen_h)
 typedef GAME_INIT(GameInitFn);
 #define GAME_UPDATE(n) void n(float dt)
 typedef GAME_UPDATE(GameUpdateFn);
@@ -923,3 +926,4 @@ enum {
   USEREVENT = 0x8000,
 };
 
+#endif

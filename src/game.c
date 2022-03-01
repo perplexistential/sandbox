@@ -206,7 +206,7 @@ typedef struct
 
 typedef struct
 {
-  GameMemory memory;
+  MemoryBlock memory;
   PlatformAPI api;
 
   // Window meta
@@ -230,7 +230,6 @@ typedef struct
   Controller controller;
   
   bool audioDemoInitialized;
-
   bool showMenu;
   bool paused;
 } GameState;
@@ -298,7 +297,7 @@ void newBB(BoundingBox *bb, float x, float y, float w, float h)
   bb->a = 0.5f;
 }
 
-func(GAME_WINDOW_RESIZED, GameWindowResized)
+extern GAME_WINDOW_RESIZED(GameWindowResized)
 {
   printf("window(%d) resized", window);
   state->screen_w = width;
@@ -314,7 +313,7 @@ extern GAME_QUIT(GameQuit)
 
 extern GAME_INIT(GameInit)
 { 
-  state = GameAllocateStruct(&memory, GameState);
+  state = AllocateMemory(&memory, GameState);
   state->api = api;
   if(state->memory.ptr == 0) {
     state->memory = memory;
@@ -333,7 +332,7 @@ extern GAME_INIT(GameInit)
     state->api.PlatformEnsureMusic("Stormcrow56k_-_my_old_man.mp3", 0);
     state->api.PlatformEnsureMusic("Stormcrow56k_-_temaczal.mp3", 1);
     state->api.PlatformEnsureAudio("ByMennen.wav", 0);
-    state->api.PlatformEnsureAudio("bird_caw1.wav", 1);
+    state->api.PlatformEnsureAudio("bird_caw1.wav", 0);
   }
   
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
@@ -386,16 +385,14 @@ extern GAME_UPDATE(GameUpdate)
     state->paused = !state->paused;
   }
 
-  if (AUDIO_DEMO_ENABLED) {
-    // Pause music
-    if (state->paused) {
-      state->api.PlatformPauseMusic();
-      state->api.PlatformPlayAudio(0, 0, 1, 100, 0);
-      state->api.PlatformPlayMusic(1, 5, 0, 0.0f, 100, false);
-    } else {
-      state->api.PlatformStopMusic(0);
-      state->api.PlatformPlayMusic(0, 0, 0, 0.0f, 100, true);
-    }
+  // Pause music
+  if (state->paused) {
+    state->api.PlatformPauseMusic();
+    state->api.PlatformPlayAudio(0, 0, 1, 100, 0);
+    state->api.PlatformPlayMusic(1, 5, 0, 0.0f, 100, false);
+  } else {
+    state->api.PlatformStopMusic(0);
+    state->api.PlatformPlayMusic(0, 0, 0, 0.0f, 100, true);
   }
 
   if (COLLISION_DEMO_ENABLED && !state->paused) {
