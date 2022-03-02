@@ -228,6 +228,7 @@ typedef struct
   // User Input Demo
   bool keyboardDemoInitialized;
   Controller controller;
+  Controller prevController;
   
   bool audioDemoInitialized;
   bool showMenu;
@@ -380,19 +381,27 @@ void shiftColor(float* c, float* accel, float dt)
 extern GAME_UPDATE(GameUpdate)
 {
 
-  if (state->controller.state[CONTROLLER_PAUSE] &&
-      state->controller.state[CONTROLLER_PAUSE] != state->controller.previous[CONTROLLER_PAUSE]) {
-    state->paused = !state->paused;
+  if (CONTROLLER_DEMO_ENABLED) {
+    // TODO: Apply Command pattern
+    if (state->controller.state[CONTROLLER_PAUSE] &&
+	state->controller.state[CONTROLLER_PAUSE] != state->controller.previous[CONTROLLER_PAUSE]) {
+      state->paused = !state->paused;
+    }
   }
 
-  // Pause music
-  if (state->paused) {
-    state->api.PlatformPauseMusic();
-    state->api.PlatformPlayAudio(0, 0, 1, 100, 0);
-    state->api.PlatformPlayMusic(1, 5, 0, 0.0f, 100, false);
-  } else {
-    state->api.PlatformStopMusic(0);
-    state->api.PlatformPlayMusic(0, 0, 0, 0.0f, 100, true);
+  if (AUDIO_DEMO_ENABLED) {
+    // Pause music
+    // TODO: super terrible and buggy. Apply Command pattern combined with above
+    /*
+    if (state->paused) {
+      state->api.PlatformPauseMusic();
+      state->api.PlatformPlayAudio(0, 0, 1, 100, 0);
+      state->api.PlatformPlayMusic(1, 5, 0, 0.0f, 100, false);
+    } else {
+      state->api.PlatformStopMusic(0);
+      state->api.PlatformPlayMusic(0, 0, 0, 0.0f, 100, true);
+    }
+    */
   }
 
   if (COLLISION_DEMO_ENABLED && !state->paused) {
@@ -540,6 +549,8 @@ extern GAME_RENDER(GameRender)
 
 extern GAME_KEYBOARD_INPUT(GameKeyboardInput)
 {
+  // TODO: By Applying a Command pattern, one would return a function per key/state
+  // received by this handler.
   for (unsigned int i=0; i < CONTROLLER_SIZE; i++) {
     if (SCANCODE_TO_KEYCODE(symbol) == button_map[i]){
       state->controller.state[i] = key_state;

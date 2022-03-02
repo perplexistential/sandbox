@@ -438,22 +438,23 @@ void GameLoop()
 
     state.PlatformGameLoop();
 
+    // RELOAD
     time_t new_dll_file_time = GetFileWriteTime(PLATFORM_LIB);
     if(new_dll_file_time > state.api_last_file_time) {
       UnloadPlatformCode(&state.api);
       usleep(200);
-      state.api = LoadPlatformAPI(GAME_LIB);
-      state.PlatformInit(state.game_memory, GetGameAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+      state.api = LoadPlatformAPI(PLATFORM_LIB);
+      state.PlatformInit(state.platform_memory, GetGameAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);  
     }
-    // RELOAD
     new_dll_file_time = GetFileWriteTime(GAME_LIB);
     if(new_dll_file_time > state.game_last_file_time) {
       UnloadGameCode(&state.game_code);
       usleep(200);
       state.game_code = LoadGameCode(GAME_LIB);
-      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);  
+      state.PlatformInit(state.platform_memory, GetGameAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
     }
-    
     usleep(1);
   }
 }

@@ -5,7 +5,7 @@ then
     mkdir build
 fi
 
-gcc -g -c -Wall -Werror -Wuninitialized -fpic src/game.c -o build/game.o
+gcc -c -Wall -Werror -Wuninitialized -fpic src/game.c -o build/game.o -g
 
-gcc -g -shared -o build/libgame.so build/game.o
+gcc -shared -fpic -o build/libgame.so build/game.o -g
 

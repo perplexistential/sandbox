@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -79,6 +80,7 @@ typedef struct
   MemoryBlock memory;
   GameCode game_code;
   // App
+  int init_done;
   int screen_x, screen_y, screen_w, screen_h;
   SDL_Window *windows[MAX_WINDOWS];
   int8_t window_count;
@@ -950,59 +952,63 @@ extern PLATFORM_GAME_LOOP(PlatformGameLoop)
 }
 
 extern PLATFORM_INIT(PlatformInit)
-{ 
+{
   state = AllocateMemory(&memory, PlatformState);
   state->game_code = game_code;
   if(state->memory.ptr == 0) {
     state->memory = memory;
   }
-  
-  if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
-    Die("failed to initialize SDL2: %s\n", SDL_GetError());
+
+  if (!state->init_done) {
+    state->init_done = true;
+    // TODO: This should only be done once, ever.
+    if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+      Die("failed to initialize SDL2: %s\n", SDL_GetError());
+    }
+    // Image loading support
+    if(IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP) < 0) {
+      Die("failed to initialize Image support: %s\n", IMG_GetError());
+    }
+    // TODO: MIX_INIT_MIDI?
+    if(Mix_Init(MIX_INIT_FLAC | MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_MOD | MIX_INIT_OPUS) < 0) {
+      Die("failed to initialize Mixer support: %s\n", Mix_GetError());
+    }
+    if(SDLNet_Init() == -1) {
+      Die("failed to initialize SDLNet support", SDLNet_GetError());
+    }
+    SDL_version compile_version;
+    const SDL_version *link_version=SDLNet_Linked_Version();
+    SDL_NET_VERSION(&compile_version);
+    printf("Compiled with SDL_net version: %d.%d.%d\n", 
+	   compile_version.major,
+	   compile_version.minor,
+	   compile_version.patch);
+    printf("Running with SDL_net version: %d.%d.%d\n", 
+	   link_version->major,
+	   link_version->minor,
+	   link_version->patch);
+    // open 44.1KHz, signed 16bit, system byte order,
+    //      stereo audio, using 1024 byte chunks
+    if(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024)==-1) {
+      Die("Mix_OpenAudio: %s\n", Mix_GetError());
+    }
+    if(0 > Mix_AllocateChannels(200)){
+      Die("failed to allocate audio channels: %s\n", Mix_GetError());
+    }
+    Mix_ChannelFinished(channelDone);
+    Mix_HookMusicFinished(musicDone);
+    // print the number of music decoders available
+    printf("There are %d music deocoders available\n", Mix_GetNumMusicDecoders());
+    state->window_count = 0;
+    state->screen_w = SCREEN_WIDTH;
+    state->screen_h = SCREEN_HEIGHT;
+    PlatformCreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
+    // get version info
+    const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
+    const GLubyte* version = glGetString(GL_VERSION); // version as a string
+    printf("Renderer: %s\n", renderer);
+    printf("OpenGL version supported %s\n", version);
   }
-  // Image loading support
-  if(IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP) < 0) {
-    Die("failed to initialize Image support: %s\n", IMG_GetError());
-  }
-  // TODO: MIX_INIT_MIDI?
-  if(Mix_Init(MIX_INIT_FLAC | MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_MOD | MIX_INIT_OPUS) < 0) {
-    Die("failed to initialize Mixer support: %s\n", Mix_GetError());
-  }
-  if(SDLNet_Init() == -1) {
-    Die("failed to initialize SDLNet support", SDLNet_GetError());
-  }
-  SDL_version compile_version;
-  const SDL_version *link_version=SDLNet_Linked_Version();
-  SDL_NET_VERSION(&compile_version);
-  printf("Compiled with SDL_net version: %d.%d.%d\n", 
-	 compile_version.major,
-	 compile_version.minor,
-	 compile_version.patch);
-  printf("Running with SDL_net version: %d.%d.%d\n", 
-	 link_version->major,
-	 link_version->minor,
-	 link_version->patch);
-  // open 44.1KHz, signed 16bit, system byte order,
-  //      stereo audio, using 1024 byte chunks
-  if(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024)==-1) {
-    Die("Mix_OpenAudio: %s\n", Mix_GetError());
-  }
-  if(0 > Mix_AllocateChannels(200)){
-    Die("failed to allocate audio channels: %s\n", Mix_GetError());
-  }
-  Mix_ChannelFinished(channelDone);
-  Mix_HookMusicFinished(musicDone);
-  // print the number of music decoders available
-  printf("There are %d music deocoders available\n", Mix_GetNumMusicDecoders());
-  state->window_count = 0;
-  state->screen_w = SCREEN_WIDTH;
-  state->screen_h = SCREEN_HEIGHT;
-  PlatformCreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
-  // get version info
-  const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
-  const GLubyte* version = glGetString(GL_VERSION); // version as a string
-  printf("Renderer: %s\n", renderer);
-  printf("OpenGL version supported %s\n", version);
 }
 
   
