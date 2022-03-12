@@ -1,4 +1,3 @@
-#include <bits/types/time_t.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -209,6 +208,10 @@ typedef struct
   GameMemory memory;
   PlatformAPI api;
 
+  Shader box_shader_vert;
+  Shader box_shader_frag;
+  ShaderProgram box_program;
+  
   // Window meta
   int screen_w, screen_h;
 
@@ -307,8 +310,9 @@ func(GAME_WINDOW_RESIZED, GameWindowResized)
 
 extern GAME_QUIT(GameQuit)
 {
-  printf("game: got a quit - gonna take a screenshot\n");
-  state->api.PlatformScreenshot(0, 0, 0, state->screen_w, state->screen_h);
+  printf("game: got a quit\n");
+  // Take a screenshot on exit
+  //state->api.PlatformScreenshot(0, 0, 0, state->screen_w, state->screen_h);
 }
 
 
@@ -346,6 +350,9 @@ extern GAME_INIT(GameInit)
       newDemoBB(&state->boxes[c],c);
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
+    state->box_shader_vert = state->api.PlatformLoadShader("default.vert");
+    state->box_shader_frag = state->api.PlatformLoadShader("default.frag");
+    state->box_program = state->api.PlatformCreateShaderProgram(2, state->box_shader_vert, state->box_shader_frag);
   }
   
   if (CHARACTER_DEMO_ENABLED && !state->characterDemoInitialized) {
@@ -516,10 +523,12 @@ extern GAME_UPDATE(GameUpdate)
 extern GAME_RENDER(GameRender)
 {
     state->api.PlatformDrawBox(state->wall.x, state->wall.y, state->wall.width, state->wall.height,
-			       state->wall.r, state->wall.g, state->wall.b, state->wall.a);
+			       state->wall.r, state->wall.g, state->wall.b, state->wall.a,
+			       state->box_program);
     state->api.PlatformDrawBox(state->ground.x, state->ground.y,
 			       state->ground.width, state->ground.height,
-			       state->ground.r, state->ground.g, state->ground.b, state->ground.a);
+			       state->ground.r, state->ground.g, state->ground.b, state->ground.a,
+			       state->box_program);
     for (unsigned int c=0; c < state->boxCount; c++) {
       state->api.PlatformDrawBox(state->boxes[c].x,
 				 state->boxes[c].y,
@@ -528,7 +537,8 @@ extern GAME_RENDER(GameRender)
 				 state->boxes[c].r,
 				 state->boxes[c].g,
 				 state->boxes[c].b,
-				 state->boxes[c].a);
+				 state->boxes[c].a,
+				 state->box_program);
     }
     if (CHARACTER_DEMO_ENABLED) {
       const SpriteFrame *sf = getSpriteFrame(&state->character);

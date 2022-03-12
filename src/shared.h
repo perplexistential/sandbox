@@ -133,9 +133,7 @@ enum {
   SCANCODE_VOLUMEDOWN = 129,
   SCANCODE_KP_COMMA = 133,
   SCANCODE_KP_EQUALSAS400 = 134,
-
-  SCANCODE_INTERNATIONAL1 = 135, /**< used on Asian keyboards, see
-                                      footnotes in USB doc */
+  SCANCODE_INTERNATIONAL1 = 135, /**< used on Asian keyboards, see footnotes in USB doc */
   SCANCODE_INTERNATIONAL2 = 136,
   SCANCODE_INTERNATIONAL3 = 137, /**< Yen */
   SCANCODE_INTERNATIONAL4 = 138,
@@ -153,7 +151,6 @@ enum {
   SCANCODE_LANG7 = 150, /**< reserved */
   SCANCODE_LANG8 = 151, /**< reserved */
   SCANCODE_LANG9 = 152, /**< reserved */
-
   SCANCODE_ALTERASE = 153, /**< Erase-Eaze */
   SCANCODE_SYSREQ = 154,
   SCANCODE_CANCEL = 155,
@@ -166,7 +163,6 @@ enum {
   SCANCODE_CLEARAGAIN = 162,
   SCANCODE_CRSEL = 163,
   SCANCODE_EXSEL = 164,
-
   SCANCODE_KP_00 = 176,
   SCANCODE_KP_000 = 177,
   SCANCODE_THOUSANDSSEPARATOR = 178,
@@ -213,7 +209,6 @@ enum {
   SCANCODE_KP_OCTAL = 219,
   SCANCODE_KP_DECIMAL = 220,
   SCANCODE_KP_HEXADECIMAL = 221,
-
   SCANCODE_LCTRL = 224,
   SCANCODE_LSHIFT = 225,
   SCANCODE_LALT = 226, /**< alt, option */
@@ -242,8 +237,7 @@ enum {
   SCANCODE_AC_BOOKMARKS = 274,
   SCANCODE_BRIGHTNESSDOWN = 275,
   SCANCODE_BRIGHTNESSUP = 276,
-  SCANCODE_DISPLAYSWITCH = 277, /**< display mirroring/dual display
-                                     switch, video mode switch */
+  SCANCODE_DISPLAYSWITCH = 277, /**< display mirroring/dual display switch, video mode switch */
   SCANCODE_KBDILLUMTOGGLE = 278,
   SCANCODE_KBDILLUMDOWN = 279,
   SCANCODE_KBDILLUMUP = 280,
@@ -253,8 +247,7 @@ enum {
   SCANCODE_APP2 = 284,
   SCANCODE_AUDIOREWIND = 285,
   SCANCODE_AUDIOFASTFORWARD = 286,
-  NUM_SCANCODES = 512 /**< not a key, just marks the number of scancodes
-                               for array bounds */
+  NUM_SCANCODES = 512 /**< not a key, just marks the number of scancodes for array bounds */
 };
 
 
@@ -548,22 +541,47 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
 #define GameAllocateStruct(memory, type)                                       \
   (type *)GameAllocateMemory(memory, sizeof(type))
 
+// I sure hope that these uint32_t cast to GLuint without any issues
+typedef struct {
+  uint32_t id;
+} Shader;
 
-// Demonstration boxes
+typedef struct {
+  uint32_t id;
+} ShaderProgram;
+
+#define PLATFORM_CREATE_SHADER_PROGRAM(n) ShaderProgram n(int shader_count, ...)
+typedef PLATFORM_CREATE_SHADER_PROGRAM(PlatformCreateShaderProgramFn);
+
+#define PLATFORM_LOAD_SHADER(n) Shader n(const char *filename)
+typedef PLATFORM_LOAD_SHADER(PlatformLoadShaderFn);
+
+#define PLATFORM_ATTACH_SHADER(n)                                              \
+  void n(ShaderProgram program, Shader shader)
+typedef PLATFORM_ATTACH_SHADER(PlatformAttachShaderFn);
+
+#define PLATFORM_DETACH_SHADER(n)                                              \
+  void n(ShaderProgram program, Shader shader)
+typedef PLATFORM_DETACH_SHADER(PlatformDetachShaderFn);
+
+#define PLATFORM_DELETE_SHADER(n) void n(Shader shader)
+typedef PLATFORM_DELETE_SHADER(PlatformDeleteShaderFn);
+
+// Demonstration boxes and/or particles
 #define PLATFORM_DRAW_BOX(n)                                                   \
   void n(float x, float y, float width, float height, float r, float g,        \
-         float b, float a)
+         float b, float a, ShaderProgram program)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
 
 // Image and Sprite loading
-#define MAX_SURFACES 3
+#define MAX_SURFACES 100
 #define MAX_FILENAME_LENGTH 31
 
-#define PLATFORM_ENSURE_IMAGE(n) void n(const char *filename, unsigned int textureID)
+#define PLATFORM_ENSURE_IMAGE(n) void n(const char *filename, unsigned int texture_id)
 typedef PLATFORM_ENSURE_IMAGE(PlatformEnsureImageFn);
 
 #define PLATFORM_DRAW_TEXTURE(n)                                               \
-  void n(unsigned int textureIndex, float x, float y, float width,             \
+  void n(unsigned int texture_index, float x, float y, float width,             \
          float height, int sprite_x, int sprite_y, int sprite_w, int sprite_h)
 typedef PLATFORM_DRAW_TEXTURE(PlatformDrawTextureFn);
 
@@ -635,6 +653,11 @@ typedef PLATFORM_CLOSE_CONNECTION(PlatformCloseConnectionFn);
 typedef struct
 {
   // Draw
+  PlatformCreateShaderProgramFn *PlatformCreateShaderProgram;
+  PlatformLoadShaderFn *PlatformLoadShader;
+  PlatformAttachShaderFn *PlatformAttachShader;
+  PlatformDetachShaderFn *PlatformDetachShader;
+  PlatformDeleteShaderFn *PlatformDeleteShader;
   PlatformDrawBoxFn *PlatformDrawBox;
   PlatformEnsureImageFn *PlatformEnsureImage;
   PlatformDrawTextureFn *PlatformDrawTexture;
