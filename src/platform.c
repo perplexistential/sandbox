@@ -142,6 +142,8 @@ static struct
   // Net
   Connection sockets[MAX_SOCKETS];
   int socket_count;
+
+  int program_set;
 } state;
 
 
@@ -445,6 +447,7 @@ PLATFORM_CREATE_SHADER_PROGRAM(CreateShaderProgram)
   }
   va_end(vl);
   glLinkProgram(program.id);
+  glUseProgram(program.id);
   return program;
 }
 
@@ -522,25 +525,33 @@ PLATFORM_DRAW_BOX(DrawBox)
   glEnd();
   glDisable(GL_BLEND);
   */
+
   float half_width = SCREEN_WIDTH * 0.5f;
   float half_height = SCREEN_HEIGHT * 0.5f;
   x = x - half_width;
   y = y - half_height;
+  float x0 = x/half_width;
+  float y0 = y/half_height;
+  float x1 = (x+width)/half_width;
+  float y1 = (y+height)/half_height;
   float vertices[] = {
-    x/half_width, (y + height)/half_height,
-    (x + width)/half_width, (y + height)/half_height,
-    (x + width)/half_width,  y/half_height,
-    x/half_width, y/half_height,
+    x0, y1,
+    x1, y1,
+    x1, y0,
+    x0, y0,
   };
-  
-  if (0 == state.vao)
-    glGenVertexArrays(1, &state.vao);
+
+  /*
+  float vertices[] = {
+    -0.5, -0.6,
+    -0.6, -0.6,
+    -0.6, -0.5,
+    -0.5, -0.5,
+  };
+  */
   glBindVertexArray(state.vao);
-  if (0 == state.vbo)
-    glGenBuffers(1, &state.vbo);
   glBindBuffer(GL_ARRAY_BUFFER, state.vbo);
-  
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
   glUseProgram(program.id);
   GLint posAttrib = glGetAttribLocation(program.id, "position");
   glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
@@ -652,6 +663,10 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   //glOrtho(0.0f, 1.0f*width, 0.0f, 1.0f*height, 0.0f, 1.0f);
   index = state.window_count;
   state.window_count++;
+  if (0 == state.vao)
+    glGenVertexArrays(1, &state.vao);
+  if (0 == state.vbo)
+    glGenBuffers(1, &state.vbo);
   return index;
 }
 
