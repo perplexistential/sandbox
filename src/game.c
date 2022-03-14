@@ -1,4 +1,3 @@
-#include <bits/types/time_t.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
