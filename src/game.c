@@ -30,8 +30,8 @@ typedef struct
 
 #define COLLISION_DEMO_ENABLED true
 #define COLLISION_SPLATTER false
-#define COLLISION_DEMO_MAX_BOXES 50000
-#define COLLISION_DEMO_INITIAL_BOX_COUNT 50000
+#define COLLISION_DEMO_MAX_BOXES 10000
+#define COLLISION_DEMO_INITIAL_BOX_COUNT 10000
 
 bool checkCollision(BoundingBox *a, BoundingBox *b){
   // the sides of the rects
@@ -75,7 +75,7 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
 typedef struct
 {
   uint16_t x, y, width, height;
-} SpriteFrame;
+} SpriteFrameDefinition;
 
 #define FACING_DOWN_STEP_0                                                     \
   { .x = 113, .y = 160, .width = 16, .height = 32 }
@@ -114,22 +114,22 @@ typedef struct
   { .x = 130, .y = 259, .width = 16, .height = 32 }
 
 #define MAX_FRAMES 3
-const SpriteFrame CHAR_FACING_DOWN[MAX_FRAMES] = {
+const SpriteFrameDefinition CHAR_FACING_DOWN[MAX_FRAMES] = {
     FACING_DOWN_STEP_1,
     FACING_DOWN_STEP_2,
     FACING_DOWN_STEP_0,
 };
-const SpriteFrame CHAR_FACING_RIGHT[MAX_FRAMES] = {
+const SpriteFrameDefinition CHAR_FACING_RIGHT[MAX_FRAMES] = {
     FACING_RIGHT_STEP_1,
     FACING_RIGHT_STEP_2,
     FACING_RIGHT_STEP_0,
 };
-const SpriteFrame CHAR_FACING_UP[MAX_FRAMES] = {
+const SpriteFrameDefinition CHAR_FACING_UP[MAX_FRAMES] = {
     FACING_UP_STEP_1,
     FACING_UP_STEP_2,
     FACING_UP_STEP_0,
 };
-const SpriteFrame CHAR_FACING_LEFT[MAX_FRAMES] = {
+const SpriteFrameDefinition CHAR_FACING_LEFT[MAX_FRAMES] = {
     FACING_LEFT_STEP_1,
     FACING_LEFT_STEP_2,
     FACING_LEFT_STEP_0,
@@ -137,7 +137,7 @@ const SpriteFrame CHAR_FACING_LEFT[MAX_FRAMES] = {
 #define NUMBER_OF_FACING_DIRS 4
 enum { FACING_DOWN = 0, FACING_UP = 2};
 enum { FACING_RIGHT = 1, FACING_LEFT = 3 };
-const SpriteFrame *CHAR_ANIMATION_FRAMES[NUMBER_OF_FACING_DIRS] = {
+const SpriteFrameDefinition *CHAR_ANIMATION_FRAMES[NUMBER_OF_FACING_DIRS] = {
     CHAR_FACING_DOWN,
     CHAR_FACING_RIGHT,
     CHAR_FACING_UP,
@@ -156,7 +156,7 @@ typedef struct
   bool crouched;
 } Character;
 
-const SpriteFrame* getSpriteFrame(Character *c) {
+const SpriteFrameDefinition* getSpriteFrame(Character *c) {
   return &(CHAR_ANIMATION_FRAMES[c->facing][(int)(floor(c->current_frame))]);
 }
 
@@ -279,8 +279,8 @@ void newDemoBB(BoundingBox *bb, unsigned int c)
   bb->y = y;
   bb->width = 5.0f;
   bb->height = 5.0f;
-  bb->veloc_x = (rand() % (c+1)) * 0.020f;
-  bb->veloc_y = (rand() % (c+1)) * 0.020f;
+  bb->veloc_x = (rand() % (c+1)) * 0.120f;
+  bb->veloc_y = (rand() % (c+1)) * 0.120f;
   bb->r=0.3f * (rand() % 9);
   bb->accel_r=1.0f;
   bb->g=0.0f * (rand() % 9);
@@ -350,9 +350,12 @@ extern GAME_INIT(GameInit)
       newDemoBB(&state->boxes[c],c);
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
-    state->box_shader_vert = state->api.PlatformLoadShader("default.vert");
-    state->box_shader_frag = state->api.PlatformLoadShader("default.frag");
+    //state->box_shader_vert = state->api.PlatformLoadShader("default.vert");
+    //state->box_shader_frag = state->api.PlatformLoadShader("default.frag");
+    state->box_shader_vert = state->api.PlatformLoadShader("colored.vert");
+    state->box_shader_frag = state->api.PlatformLoadShader("colored.frag");
     state->box_program = state->api.PlatformCreateShaderProgram(2, state->box_shader_vert, state->box_shader_frag);
+    
   }
   
   if (CHARACTER_DEMO_ENABLED && !state->characterDemoInitialized) {
@@ -541,7 +544,7 @@ extern GAME_RENDER(GameRender)
 				 state->box_program);
     }
     if (CHARACTER_DEMO_ENABLED) {
-      const SpriteFrame *sf = getSpriteFrame(&state->character);
+      const SpriteFrameDefinition *sf = getSpriteFrame(&state->character);
       state->api.PlatformDrawTexture(state->character.textureIndex,
 				     state->character.bb.x,
 				     state->character.bb.y,

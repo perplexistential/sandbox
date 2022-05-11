@@ -541,7 +541,11 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
 #define GameAllocateStruct(memory, type)                                       \
   (type *)GameAllocateMemory(memory, sizeof(type))
 
-// I sure hope that these uint32_t cast to GLuint without any issues
+#define PLATFORM_SET_PROJECTION(n)                                             \
+  void n(float left, float right, float bottom, float top, float front,        \
+         float back)
+typedef PLATFORM_SET_PROJECTION(PlatformSetProjectionFn);
+
 typedef struct {
   uint32_t id;
 } Shader;
@@ -552,6 +556,22 @@ typedef struct {
 
 #define PLATFORM_CREATE_SHADER_PROGRAM(n) ShaderProgram n(int shader_count, ...)
 typedef PLATFORM_CREATE_SHADER_PROGRAM(PlatformCreateShaderProgramFn);
+
+typedef struct {
+  uint32_t texture_id;
+  uint8_t w;
+  uint8_t h;
+} SpriteFrame;
+
+typedef struct {
+  SpriteFrame* frames;
+  float fps;
+} Sprite;
+
+typedef struct {
+  Sprite* sprites;
+  uint8_t count;
+} SpriteSheet;
 
 #define PLATFORM_LOAD_SHADER(n) Shader n(const char *filename)
 typedef PLATFORM_LOAD_SHADER(PlatformLoadShaderFn);
@@ -653,6 +673,7 @@ typedef PLATFORM_CLOSE_CONNECTION(PlatformCloseConnectionFn);
 typedef struct
 {
   // Draw
+  PlatformSetProjectionFn *PlatformSetProjection;
   PlatformCreateShaderProgramFn *PlatformCreateShaderProgram;
   PlatformLoadShaderFn *PlatformLoadShader;
   PlatformAttachShaderFn *PlatformAttachShader;

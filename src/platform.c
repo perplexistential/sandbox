@@ -132,6 +132,7 @@ static struct
   // Video
   GLuint vao;
   GLuint vbo;
+  GLuint vbo_color;
   Texture textures[MAX_SURFACES];
   // Audio
   Audio audio[MAX_AUDIOS];
@@ -391,6 +392,11 @@ void UnloadGameCode(GameCode *game_code)
 #define FILE_TOO_LARGE 2
 #define FILE_READ_ERROR 3
 
+PLATFORM_SET_PROJECTION(SetProjection)
+{
+  
+}
+
 char * c_read_file(const char * f_name, int * err, size_t * f_size) {
     char * buffer;
     size_t length;
@@ -535,27 +541,24 @@ PLATFORM_DRAW_BOX(DrawBox)
   float x1 = (x+width)/half_width;
   float y1 = (y+height)/half_height;
   float vertices[] = {
-    x0, y1,
-    x1, y1,
-    x1, y0,
-    x0, y0,
+    x0, y1, r, g, b, a,
+    x1, y1, r, g, b, a,
+    x1, y0, r, g, b, a,
+    x0, y0, r, g, b, a,
   };
 
-  /*
-  float vertices[] = {
-    -0.5, -0.6,
-    -0.6, -0.6,
-    -0.6, -0.5,
-    -0.5, -0.5,
-  };
-  */
-  glBindVertexArray(state.vao);
+  //glBindVertexArray(state.vao);
   glBindBuffer(GL_ARRAY_BUFFER, state.vbo);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
   glUseProgram(program.id);
   GLint posAttrib = glGetAttribLocation(program.id, "position");
-  glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+  glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(posAttrib);
+
+  GLint inColor = glGetAttribLocation(program.id, "color");
+  glVertexAttribPointer(inColor, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(2*sizeof(float)));
+  glEnableVertexAttribArray(inColor);
+  
   glDrawArrays(GL_QUADS, 0, 4);
 }
 
