@@ -19,9 +19,7 @@
 #include <SDL2/SDL_net.h>
 
 #include "shared.h"
-
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#include "../vendor/cglm/cglm.h"
 
 #define MAX_WINDOWS 2
 
@@ -118,6 +116,21 @@ typedef struct {
   int channel;
 } Connection;
 
+typedef struct {
+  int x;
+  int y;
+  int w;
+  int h;
+} Screen;
+
+typedef struct {
+  float left;
+  float right;
+  float bottom;
+  float top;
+  float front;
+  float back;
+} Projection;
 
 static struct
 {
@@ -125,7 +138,8 @@ static struct
   GameCode game_code;
   GameMemory game_memory;
   // App
-  int screen_x, screen_y, screen_w, screen_h;
+  Screen screen;
+  Projection projection;
   SDL_Window *windows[MAX_WINDOWS];
   int8_t window_count;
   SDL_GLContext gl_context[MAX_WINDOWS];
@@ -532,8 +546,8 @@ PLATFORM_DRAW_BOX(DrawBox)
   glDisable(GL_BLEND);
   */
 
-  float half_width = SCREEN_WIDTH * 0.5f;
-  float half_height = SCREEN_HEIGHT * 0.5f;
+  float half_width = 800 * 0.5f;
+  float half_height = 600 * 0.5f;
   x = x - half_width;
   y = y - half_height;
   float x0 = x/half_width;
@@ -661,9 +675,6 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   glewExperimental = GL_TRUE;
   glewInit();
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  //glMatrixMode(GL_PROJECTION);
-  //glLoadIdentity();
-  //glOrtho(0.0f, 1.0f*width, 0.0f, 1.0f*height, 0.0f, 1.0f);
   index = state.window_count;
   state.window_count++;
   if (0 == state.vao)
@@ -849,9 +860,9 @@ PLATFORM_SCREENSHOT(Screenshot)
   }
   SDL_Surface *surface = NULL;
   surface = SDL_CreateRGBSurfaceWithFormatFrom(image_bytes,
-					       state.screen_w,
-					       state.screen_h,
-					       32, 4*state.screen_w,
+					       state.screen.w,
+					       state.screen.h,
+					       32, 4*state.screen.w,
 					       SDL_PIXELFORMAT_RGBA32);
   if (NULL == surface) {
     printf("unable to create surface for screenshot: %s\n", SDL_GetError());
@@ -1004,6 +1015,7 @@ PlatformAPI GetPlatformAPI()
 {
     PlatformAPI api = {};
     // Draw
+    api.PlatformSetProjection = SetProjection;
     api.PlatformCreateShaderProgram = CreateShaderProgram;
     api.PlatformLoadShader = LoadShader;
     api.PlatformAttachShader = AttachShader;
@@ -1090,8 +1102,8 @@ void GameLoop()
 	  break;
         case SDL_WINDOWEVENT_MOVED:
 	  if (state.game_code.game_window_moved) {
-	    state.screen_x = event.window.data1;
-	    state.screen_y = event.window.data2;
+	    state.screen.x = event.window.data1;
+	    state.screen.y = event.window.data2;
 	    state.game_code.game_window_moved(event.window.windowID,
 					      event.window.data1,
 					      event.window.data2);
@@ -1099,15 +1111,11 @@ void GameLoop()
 	  break;
         case SDL_WINDOWEVENT_RESIZED:
 	  if (state.game_code.game_window_resized){
-	    state.screen_w = event.window.data1;
-	    state.screen_h = event.window.data2;
+	    state.screen.w = event.window.data1;
+	    state.screen.h = event.window.data2;
 	    state.game_code.game_window_resized(event.window.windowID,
 						event.window.data1,
 						event.window.data2);
-	    glViewport(state.screen_x, state.screen_y, state.screen_w, state.screen_h);
-	    glMatrixMode(GL_PROJECTION);
-	    glLoadIdentity();
-	    glOrtho(0.0f, 1.0f*state.screen_w, 0.0f, 1.0f*state.screen_h, 0.0f, 1.0f);
 	  }
 	  break;
         case SDL_WINDOWEVENT_MINIMIZED:
@@ -1442,7 +1450,7 @@ void GameLoop()
       UnloadGameCode(&state.game_code);
       SDL_Delay(200);
       state.game_code = LoadGameCode(GAME_LIB);
-      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+      state.game_code.game_init(state.game_memory, GetPlatformAPI(), 800, 600);
     }
     
     SDL_Delay(1);
@@ -1494,9 +1502,9 @@ int main(int argc, char *argv[])
   // print the number of music decoders available
   printf("There are %d music deocoders available\n", Mix_GetNumMusicDecoders());
   state.window_count = 0;
-  state.screen_w = SCREEN_WIDTH;
-  state.screen_h = SCREEN_HEIGHT;
-  CreateWindow("Perplexistential Sandbox", 300, 1400, SCREEN_WIDTH, SCREEN_HEIGHT);
+  state.screen.w = 800;
+  state.screen.h = 600;
+  CreateWindow("Perplexistential Sandbox", 300, 1400, state.screen.w, state.screen.h);
   // get version info
   const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
   const GLubyte* version = glGetString(GL_VERSION); // version as a string
@@ -1505,7 +1513,7 @@ int main(int argc, char *argv[])
   // game state init
   state.game_memory = AllocateGameMemory();
   state.game_code = LoadGameCode(GAME_LIB);
-  state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+  state.game_code.game_init(state.game_memory, GetPlatformAPI(), state.screen.w, state.screen.h);
   GameLoop();
   return 0;
 }

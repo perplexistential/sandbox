@@ -541,11 +541,6 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
 #define GameAllocateStruct(memory, type)                                       \
   (type *)GameAllocateMemory(memory, sizeof(type))
 
-#define PLATFORM_SET_PROJECTION(n)                                             \
-  void n(float left, float right, float bottom, float top, float front,        \
-         float back)
-typedef PLATFORM_SET_PROJECTION(PlatformSetProjectionFn);
-
 typedef struct {
   uint32_t id;
 } Shader;
@@ -612,6 +607,15 @@ typedef PLATFORM_QUIT(PlatformQuitFn);
   unsigned int n(const char *title, uint32_t x, uint32_t y, uint32_t width,    \
                  uint32_t height)
 typedef PLATFORM_CREATE_WINDOW(PlatformCreateWindowFn);
+
+#define PLATFORM_SET_PROJECTION(n)                                             \
+  void n(unsigned int window, float left, float right, float bottom,           \
+         float top, float front, float back)
+typedef PLATFORM_SET_PROJECTION(PlatformSetProjectionFn);
+
+#define PLATFORM_SET_SCREEN(n)                                                 \
+  void n(unsigned int window, int x, int y, int w, int h)
+typedef PLATFORM_SET_SCREEN(PlatformSetScreenFn);
 
 #define PLATFORM_ENSURE_AUDIO(n)                                               \
   void n(const char *filename, unsigned int channel)

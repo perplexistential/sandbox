@@ -135,7 +135,7 @@ const SpriteFrameDefinition CHAR_FACING_LEFT[MAX_FRAMES] = {
     FACING_LEFT_STEP_0,
 };
 #define NUMBER_OF_FACING_DIRS 4
-enum { FACING_DOWN = 0, FACING_UP = 2};
+enum { FACING_DOWN = 0, FACING_UP = 2 };
 enum { FACING_RIGHT = 1, FACING_LEFT = 3 };
 const SpriteFrameDefinition *CHAR_ANIMATION_FRAMES[NUMBER_OF_FACING_DIRS] = {
     CHAR_FACING_DOWN,
@@ -203,6 +203,18 @@ typedef struct
 
 #define AUDIO_DEMO_ENABLED false
 
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 600
+
+typedef struct
+{
+  unsigned int id;
+  int x;
+  int y;
+  int w;
+  int h;
+} Window;
+
 typedef struct
 {
   GameMemory memory;
@@ -213,7 +225,7 @@ typedef struct
   ShaderProgram box_program;
   
   // Window meta
-  int screen_w, screen_h;
+  Window window;
 
   bool onlyOnceInit;
   
@@ -249,28 +261,28 @@ void newDemoBB(BoundingBox *bb, unsigned int c)
 
   if (COLLISION_SPLATTER) {
     if (c > 1000) {
-      x = state->screen_w - 60.0f;
+      x = state->window.w - 60.0f;
     }
     if (c > 2000) {
-      y = state->screen_h - 60.0f;
+      y = state->window.h - 60.0f;
     }
     if (c > 3000) {
       x = 60.0f;
     }
     if (c > 4000) {
-      x = state->screen_w * 0.5f;
+      x = state->window.w * 0.5f;
       y = 60.0f;
     }
     if (c > 5000) {
-      x = state->screen_w;
-      y = state->screen_h * 0.5f;
+      x = state->window.w;
+      y = state->window.h * 0.5f;
     }
     if (c > 6000) {
       y = 60.0f;
     }
     if (c > 7000) {
-      x = state->screen_w * 0.5f;
-      y = state->screen_h - 60.0f;
+      x = state->window.w * 0.5f;
+      y = state->window.h - 60.0f;
     }
   }
   bb->accel_x = rand() % 9 % 2 == 0 ? -1.0f : 1.0f;
@@ -304,8 +316,8 @@ void newBB(BoundingBox *bb, float x, float y, float w, float h)
 func(GAME_WINDOW_RESIZED, GameWindowResized)
 {
   printf("window(%d) resized", window);
-  state->screen_w = width;
-  state->screen_h = height;
+  state->window.w = width;
+  state->window.h = height;
 }
 
 extern GAME_QUIT(GameQuit)
@@ -330,8 +342,8 @@ extern GAME_INIT(GameInit)
     state->paused = false;
   }
   
-  state->screen_w = screen_w;
-  state->screen_h = screen_h;
+  state->window.w = screen_w;
+  state->window.h = screen_h;
 
   if (AUDIO_DEMO_ENABLED && !state->audioDemoInitialized) {
     state->api.PlatformEnsureMusic("Stormcrow56k_-_my_old_man.mp3", 0);
@@ -344,7 +356,7 @@ extern GAME_INIT(GameInit)
     //srand(37);
     state->collisionDemoInitialized = true;
     newBB(&state->wall, 300.0f, 100.0f, 50.0f, 200.0f);
-    newBB(&state->ground, 0.0f, 0.0f, 1.0f*state->screen_w, 30.0f);
+    newBB(&state->ground, 0.0f, 0.0f, 1.0f*state->window.w, 30.0f);
     for (unsigned int c=0; c < COLLISION_DEMO_INITIAL_BOX_COUNT; c++) {
       memset(&state->boxes[c], 0, sizeof(BoundingBox));
       newDemoBB(&state->boxes[c],c);
@@ -425,7 +437,7 @@ extern GAME_UPDATE(GameUpdate)
 	state->boxes[c].veloc_x -= state->boxes[c].veloc_x * 0.05f;
       } else if (checkCollision(&bb_next_x, &state->ground)) {
 	state->boxes[c].accel_x *= -1.0f;
-      } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->screen_w) {
+      } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->window.w) {
 	state->boxes[c].accel_x *= -1.0f;
 	state->boxes[c].veloc_x -= state->boxes[c].veloc_x * 0.05f;
       } else {
@@ -438,7 +450,7 @@ extern GAME_UPDATE(GameUpdate)
 	state->boxes[c].accel_y = -0.0f;
 	state->boxes[c].veloc_y -= state->boxes[c].veloc_y * 0.95f;
 	state->boxes[c].veloc_x *= 0.75;
-      } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->screen_h) {
+      } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->window.h) {
 	state->boxes[c].accel_y *= -1.0f;
       } else {
 	if(state->boxes[c].accel_y > 0) {
@@ -482,14 +494,14 @@ extern GAME_UPDATE(GameUpdate)
       state->character.bb.accel_x *= -1.0f;
     } else if (checkCollision(&bb_next_x, &state->ground)) {
       state->character.bb.accel_x *= -1.0f;
-    } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->screen_w) {
+    } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->window.w) {
       state->character.bb.accel_x *= -1.0f;
     }
     if (checkCollision(&bb_next_y, &state->wall)) {
       state->character.bb.accel_y *= -1.0f;
     } else if (checkCollision(&bb_next_y, &state->ground)) {
       state->character.bb.accel_y *= -1.0f;
-    } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->screen_h) {
+    } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->window.h) {
       state->character.bb.accel_y *= -1.0f;
     }
     float speed_x = speed(state->character.bb.accel_x, dt, state->character.bb.veloc_x);
