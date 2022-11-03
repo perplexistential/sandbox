@@ -690,7 +690,8 @@ PLATFORM_SCREENSHOT(Screenshot)
   screen_bytes = (unsigned char *)malloc(image_data_size);
   image_bytes = (unsigned char *)malloc(image_data_size);
   // Store the screen contents to a byte array
-  glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, screen_bytes);
+  // TODO: had to disable this for now as the opengl support was removed
+  //glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, screen_bytes);
   // Flip the rows of the byte array because OpenGL's coordinate system is flipped
   for (i = 0; i < height; i++) {
     memcpy(&image_bytes[image_row_length * i], &screen_bytes[image_row_length * (height - (i + 1))], sizeof(*image_bytes) * image_row_length);
