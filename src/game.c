@@ -10,10 +10,10 @@ typedef struct
 {
   float accel_x;
   float accel_y;
-  float x;
-  float y;
-  float width;
-  float height;
+  //  float x;
+  //float y;
+  //float width;
+  //float height;
   float veloc_x;
   float veloc_y;
   float r;
@@ -24,7 +24,7 @@ typedef struct
   float accel_b;
   float a;
   float accel_a;
-} BoundingBox;
+} BoxMeta;
 
 #define COLOR_SHIFT_RATE 0.2
 
@@ -33,7 +33,7 @@ typedef struct
 #define COLLISION_DEMO_MAX_BOXES 10000
 #define COLLISION_DEMO_INITIAL_BOX_COUNT 10000
 
-bool checkCollision(BoundingBox *a, BoundingBox *b){
+bool checkCollision(Rect *a, Rect *b){
   // the sides of the rects
   int leftA, leftB;
   int rightA, rightB;
@@ -42,15 +42,15 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
 
   // Calculate the sides of "A"
   leftA = a->x;
-  rightA = a->x + a->width;
+  rightA = a->x + a->w;
   topA = a->y;
-  bottomA = a->y + a->height;
+  bottomA = a->y + a->h;
 
   // Calculate the sides of "B"
   leftB = b->x;
-  rightB = b->x + b->width;
+  rightB = b->x + b->w;
   topB = b->y;
-  bottomB = b->y + b->height;
+  bottomB = b->y + b->h;
 
   // If any of the sides from A are outside of Bool
   if (bottomA <= topB) {
@@ -147,7 +147,8 @@ const SpriteFrameDefinition *CHAR_ANIMATION_FRAMES[NUMBER_OF_FACING_DIRS] = {
 typedef struct
 {
   unsigned int textureIndex;
-  BoundingBox bb;
+  BoxMeta bb;
+  Rect rect;
   float current_frame;
   uint8_t facing;
   uint8_t cyclesPerSecond;
@@ -220,10 +221,6 @@ typedef struct
   GameMemory memory;
   PlatformAPI api;
 
-  Shader box_shader_vert;
-  Shader box_shader_frag;
-  ShaderProgram box_program;
-  
   // Window meta
   Window window;
 
@@ -231,9 +228,12 @@ typedef struct
   
   // Collision Demo
   bool collisionDemoInitialized;
-  BoundingBox boxes[COLLISION_DEMO_MAX_BOXES];
-  BoundingBox wall;
-  BoundingBox ground;
+  Rect boxRects[COLLISION_DEMO_MAX_BOXES];
+  BoxMeta boxes[COLLISION_DEMO_MAX_BOXES];
+  BoxMeta wall;
+  Rect wall_rect;
+  BoxMeta ground;
+  Rect ground_rect;
   unsigned int boxCount;
 
   // Animating and controlling a Character Demo
@@ -255,42 +255,10 @@ typedef struct
 
 static GameState *state;
 
-void newDemoBB(BoundingBox *bb, unsigned int c)
+void newDemoBB(BoxMeta *bb, unsigned int c)
 {
-  float x = 60.0f,y = 60.0f;
-
-  if (COLLISION_SPLATTER) {
-    if (c > 1000) {
-      x = state->window.w - 60.0f;
-    }
-    if (c > 2000) {
-      y = state->window.h - 60.0f;
-    }
-    if (c > 3000) {
-      x = 60.0f;
-    }
-    if (c > 4000) {
-      x = state->window.w * 0.5f;
-      y = 60.0f;
-    }
-    if (c > 5000) {
-      x = state->window.w;
-      y = state->window.h * 0.5f;
-    }
-    if (c > 6000) {
-      y = 60.0f;
-    }
-    if (c > 7000) {
-      x = state->window.w * 0.5f;
-      y = state->window.h - 60.0f;
-    }
-  }
   bb->accel_x = rand() % 9 % 2 == 0 ? -1.0f : 1.0f;
   bb->accel_y = rand() % 9 % 2 == 0 ? 1.0f : -1.0f;
-  bb->x = x;
-  bb->y = y;
-  bb->width = 5.0f;
-  bb->height = 5.0f;
   bb->veloc_x = (rand() % (c+1)) * 0.120f;
   bb->veloc_y = (rand() % (c+1)) * 0.120f;
   bb->r=0.3f * (rand() % 9);
@@ -303,13 +271,45 @@ void newDemoBB(BoundingBox *bb, unsigned int c)
   bb->accel_a=1.0f;
 }
 
-void newBB(BoundingBox *bb, float x, float y, float w, float h)
+void newBB(BoxMeta *bb, Rect *r, float x, float y, float w, float h, unsigned int c)
 {
-  newDemoBB(bb, 0);
-  bb->x = x;
-  bb->y = y;
-  bb->width = w;
-  bb->height = h;
+  newDemoBB(bb, c);
+
+  float rx = 60.0f, ry = 60.0f;
+
+  if (COLLISION_SPLATTER && x < 0 && y < 0) {
+    if (c > 1000) {
+      rx = state->window.w - 60.0f;
+    }
+    if (c > 2000) {
+      ry = state->window.h - 60.0f;
+    }
+    if (c > 3000) {
+      rx = 60.0f;
+    }
+    if (c > 4000) {
+      rx = state->window.w * 0.5f;
+      ry = 60.0f;
+    }
+    if (c > 5000) {
+      rx = state->window.w;
+      ry = state->window.h * 0.5f;
+    }
+    if (c > 6000) {
+      ry = 60.0f;
+    }
+    if (c > 7000) {
+      rx = state->window.w * 0.5f;
+      ry = state->window.h - 60.0f;
+    }
+  }
+  
+  r->w = 5.0f;
+  r->h = 5.0f;
+  r->x = rx;
+  r->y = ry;
+  r->w = w;
+  r->h = h;
   bb->a = 0.5f;
 }
 
@@ -355,19 +355,13 @@ extern GAME_INIT(GameInit)
   if (COLLISION_DEMO_ENABLED && !state->collisionDemoInitialized) {
     //srand(37);
     state->collisionDemoInitialized = true;
-    newBB(&state->wall, 300.0f, 100.0f, 50.0f, 200.0f);
-    newBB(&state->ground, 0.0f, 0.0f, 1.0f*state->window.w, 30.0f);
+    newBB(&state->wall, &state->wall_rect, 300.0f, 100.0f, 50.0f, 200.0f, 0);
+    newBB(&state->ground, &state->ground_rect, 0.0f, 0.0f, 1.0f*state->window.w, 30.0f, 0);
     for (unsigned int c=0; c < COLLISION_DEMO_INITIAL_BOX_COUNT; c++) {
-      memset(&state->boxes[c], 0, sizeof(BoundingBox));
-      newDemoBB(&state->boxes[c],c);
+      memset(&state->boxes[c], 0, sizeof(BoxMeta));
+      newBB(&state->boxes[c], &state->boxRects[c], -1, -1, 5.0, 5.0, c);
     }
     state->boxCount = COLLISION_DEMO_INITIAL_BOX_COUNT;
-    //state->box_shader_vert = state->api.PlatformLoadShader("default.vert");
-    //state->box_shader_frag = state->api.PlatformLoadShader("default.frag");
-    state->box_shader_vert = state->api.PlatformLoadShader("colored.vert");
-    state->box_shader_frag = state->api.PlatformLoadShader("colored.frag");
-    state->box_program = state->api.PlatformCreateShaderProgram(2, state->box_shader_vert, state->box_shader_frag);
-    
   }
   
   if (CHARACTER_DEMO_ENABLED && !state->characterDemoInitialized) {
@@ -375,10 +369,10 @@ extern GAME_INIT(GameInit)
     memset(&state->character, 0, sizeof(Character));
     state->api.PlatformEnsureImage(CHARACTER_DEMO_SPRITE, 0);
     state->character.textureIndex = 0;
-    state->character.bb.x = 150;
-    state->character.bb.y = 250;
-    state->character.bb.width = 64;
-    state->character.bb.height = 128;
+    state->character.rect.x = 150;
+    state->character.rect.y = 250;
+    state->character.rect.w = 64;
+    state->character.rect.h = 128;
     state->character.bb.accel_x = 3.0f;
     state->character.bb.accel_y = 3.0f;
     state->character.bb.veloc_x = 15.0f;
@@ -423,34 +417,34 @@ extern GAME_UPDATE(GameUpdate)
   if (COLLISION_DEMO_ENABLED && !state->paused) {
     for (unsigned int c=0; c < state->boxCount; c++){
       // Determine the next x and y bounding boxes
-      BoundingBox bb_next_x = {
-	0,0,state->boxes[c].x + speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
-	state->boxes[c].y, state->boxes[c].width, state->boxes[c].height,0, 0
+      Rect bb_next_x = {
+	state->boxRects[c].x + speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x),
+	state->boxRects[c].y, state->boxRects[c].w, state->boxRects[c].h,
       };
-      BoundingBox bb_next_y = {
-	0,0,state->boxes[c].x,
-	state->boxes[c].y + speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y),
-	state->boxes[c].width, state->boxes[c].height
+      Rect bb_next_y = {
+	state->boxRects[c].x,
+	state->boxRects[c].y + speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y),
+	state->boxRects[c].w, state->boxRects[c].h
       };
-      if (checkCollision(&bb_next_x, &state->wall)) {
+      if (checkCollision(&bb_next_x, &state->wall_rect)) {
 	state->boxes[c].accel_x *= -1.0f;
 	state->boxes[c].veloc_x -= state->boxes[c].veloc_x * 0.05f;
-      } else if (checkCollision(&bb_next_x, &state->ground)) {
+      } else if (checkCollision(&bb_next_x, &state->ground_rect)) {
 	state->boxes[c].accel_x *= -1.0f;
-      } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->window.w) {
+      } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.w > state->window.w) {
 	state->boxes[c].accel_x *= -1.0f;
 	state->boxes[c].veloc_x -= state->boxes[c].veloc_x * 0.05f;
       } else {
 	state->boxes[c].veloc_x *= 0.99f;
       }
-      if (checkCollision(&bb_next_y, &state->wall)) {
+      if (checkCollision(&bb_next_y, &state->wall_rect)) {
 	state->boxes[c].accel_y *= 0.0f;
 	state->boxes[c].veloc_x *= 0.75f;
-      } else if (checkCollision(&bb_next_y, &state->ground)) {
+      } else if (checkCollision(&bb_next_y, &state->ground_rect)) {
 	state->boxes[c].accel_y = -0.0f;
 	state->boxes[c].veloc_y -= state->boxes[c].veloc_y * 0.95f;
 	state->boxes[c].veloc_x *= 0.75;
-      } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->window.h) {
+      } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.h > state->window.h) {
 	state->boxes[c].accel_y *= -1.0f;
       } else {
 	if(state->boxes[c].accel_y > 0) {
@@ -464,8 +458,8 @@ extern GAME_UPDATE(GameUpdate)
 	  state->boxes[c].veloc_y += 2.0f;
 	}
       }
-      state->boxes[c].x += speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x);
-      state->boxes[c].y += speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y);
+      state->boxRects[c].x += speed(state->boxes[c].accel_x, dt, state->boxes[c].veloc_x);
+      state->boxRects[c].y += speed(state->boxes[c].accel_y, dt, state->boxes[c].veloc_y);
       shiftColor(&state->boxes[c].r, &state->boxes[c].accel_r, dt);
       shiftColor(&state->boxes[c].g, &state->boxes[c].accel_g, dt);
       shiftColor(&state->boxes[c].b, &state->boxes[c].accel_b, dt);
@@ -475,40 +469,37 @@ extern GAME_UPDATE(GameUpdate)
 
   if (CHARACTER_DEMO_ENABLED && !state->paused) {
     // Determine the next x and y bounding boxes
-    BoundingBox bb_next_x = {
-      0,0,
-      state->character.bb.x + speed(state->character.bb.accel_x, dt, state->character.bb.veloc_x),
-      state->character.bb.y,
-      state->character.bb.width,
-      state->character.bb.height,
-      0,0
+    Rect bb_next_x = {
+      state->character.rect.x + speed(state->character.bb.accel_x, dt, state->character.bb.veloc_x),
+      state->character.rect.y,
+      state->character.rect.w,
+      state->character.rect.h,
     };
-    BoundingBox bb_next_y = {
-      0,0,
-      state->character.bb.x,
-      state->character.bb.y + speed(state->character.bb.accel_y, dt, state->character.bb.veloc_y),
-      state->character.bb.width,
-      state->character.bb.height
+    Rect bb_next_y = {
+      state->character.rect.x,
+      state->character.rect.y + speed(state->character.bb.accel_y, dt, state->character.bb.veloc_y),
+      state->character.rect.w,
+      state->character.rect.h
     };
-    if (checkCollision(&bb_next_x, &state->wall)) {
+    if (checkCollision(&bb_next_x, &state->wall_rect)) {
       state->character.bb.accel_x *= -1.0f;
-    } else if (checkCollision(&bb_next_x, &state->ground)) {
+    } else if (checkCollision(&bb_next_x, &state->ground_rect)) {
       state->character.bb.accel_x *= -1.0f;
-    } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.width > state->window.w) {
+    } else if (bb_next_x.x < 0 || bb_next_x.x + bb_next_x.w > state->window.w) {
       state->character.bb.accel_x *= -1.0f;
     }
-    if (checkCollision(&bb_next_y, &state->wall)) {
+    if (checkCollision(&bb_next_y, &state->wall_rect)) {
       state->character.bb.accel_y *= -1.0f;
-    } else if (checkCollision(&bb_next_y, &state->ground)) {
+    } else if (checkCollision(&bb_next_y, &state->ground_rect)) {
       state->character.bb.accel_y *= -1.0f;
-    } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.height > state->window.h) {
+    } else if (bb_next_y.y < 0 || bb_next_y.y + bb_next_y.h > state->window.h) {
       state->character.bb.accel_y *= -1.0f;
     }
     float speed_x = speed(state->character.bb.accel_x, dt, state->character.bb.veloc_x);
     float speed_y = speed(state->character.bb.accel_y, dt, state->character.bb.veloc_y);
     float *speed = &speed_x;
-    state->character.bb.x += speed_x;
-    state->character.bb.y += speed_y;
+    state->character.rect.x += speed_x;
+    state->character.rect.y += speed_y;
     if (speed_x > speed_y) {
       if (speed_x <= 0) {
 	state->character.facing = FACING_LEFT;
@@ -537,33 +528,31 @@ extern GAME_UPDATE(GameUpdate)
 
 extern GAME_RENDER(GameRender)
 {
-    state->api.PlatformDrawBox(state->wall.x, state->wall.y, state->wall.width, state->wall.height,
-			       state->wall.r, state->wall.g, state->wall.b, state->wall.a,
-			       state->box_program);
-    state->api.PlatformDrawBox(state->ground.x, state->ground.y,
-			       state->ground.width, state->ground.height,
-			       state->ground.r, state->ground.g, state->ground.b, state->ground.a,
-			       state->box_program);
-    for (unsigned int c=0; c < state->boxCount; c++) {
-      state->api.PlatformDrawBox(state->boxes[c].x,
-				 state->boxes[c].y,
-				 state->boxes[c].width,
-				 state->boxes[c].height,
-				 state->boxes[c].r,
-				 state->boxes[c].g,
-				 state->boxes[c].b,
-				 state->boxes[c].a,
-				 state->box_program);
-    }
-    if (CHARACTER_DEMO_ENABLED) {
-      const SpriteFrameDefinition *sf = getSpriteFrame(&state->character);
-      state->api.PlatformDrawTexture(state->character.textureIndex,
-				     state->character.bb.x,
-				     state->character.bb.y,
-				     state->character.bb.width,
-				     state->character.bb.height,
-				     sf->x, sf->y, sf->width, sf->height);
-    }
+  state->api.PlatformDrawBox(&state->wall_rect,
+			     //x, state->wall.y, state->wall.width, state->wall.height,
+			     state->wall.r, state->wall.g, state->wall.b, state->wall.a, true);
+  state->api.PlatformDrawBox(&state->ground_rect,
+			     //state->ground.x, state->ground.y,
+			     //state->ground.width, state->ground.height,
+			     state->ground.r, state->ground.g, state->ground.b, state->ground.a, true);
+  
+  //state->api.PlatformDrawBoxes(state->boxes, state->boxCount, 
+  for (unsigned int c=0; c < state->boxCount; c++) {
+    state->api.PlatformDrawBox(&state->boxRects[c],
+			       state->boxes[c].r,
+			       state->boxes[c].g,
+			       state->boxes[c].b,
+			       state->boxes[c].a, true);
+  }
+  if (CHARACTER_DEMO_ENABLED) {
+    const SpriteFrameDefinition *sf = getSpriteFrame(&state->character);
+    state->api.PlatformDrawTexture(state->character.textureIndex,
+				   state->character.rect.x,
+				   state->character.rect.y,
+				   state->character.rect.w,
+				   state->character.rect.h,
+				   sf->x, sf->y, sf->width, sf->height);
+  }
 }
 
 extern GAME_KEYBOARD_INPUT(GameKeyboardInput)

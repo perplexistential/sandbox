@@ -1,11 +1,14 @@
+#include <SDL2/SDL_blendmode.h>
+#include <SDL2/SDL_rect.h>
+#include <SDL2/SDL_render.h>
+#include <string.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <stdarg.h>
-
-#include <GL/glew.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_events.h>
@@ -19,13 +22,9 @@
 #include <SDL2/SDL_net.h>
 
 #include "shared.h"
-#include "../vendor/cglm/cglm.h"
+
 
 #define MAX_WINDOWS 2
-
-// This should be 3000, probably...
-#define MAX_SHADERS 100
-#define MAX_SHADER_PROGRAMS 50
 
 #define BUILD_DIR "build"
 #define GAME_LIB "build/libgame.so"
@@ -80,17 +79,8 @@ typedef struct
   time_t last_file_time;
 } GameCode;
 
-typedef struct
-{
-  GLuint textureID;
-} Texture;
-
 #define MAX_AUDIOS 500
 #define MAX_MUSIC 100
-
-struct ID {
-  GLuint ID;
-};
 
 typedef struct
 {
@@ -142,12 +132,10 @@ static struct
   Projection projection;
   SDL_Window *windows[MAX_WINDOWS];
   int8_t window_count;
-  SDL_GLContext gl_context[MAX_WINDOWS];
+  SDL_Renderer *renderer;
+  SDL_Texture *textures[MAX_SURFACES];
+  int texture_count;
   // Video
-  GLuint vao;
-  GLuint vbo;
-  GLuint vbo_color;
-  Texture textures[MAX_SURFACES];
   // Audio
   Audio audio[MAX_AUDIOS];
   int channel_count;
@@ -406,9 +394,11 @@ void UnloadGameCode(GameCode *game_code)
 #define FILE_TOO_LARGE 2
 #define FILE_READ_ERROR 3
 
-PLATFORM_SET_PROJECTION(SetProjection)
-{
-  
+
+PLATFORM_QUIT(QuitGame) {
+  SDLNet_Quit();
+  Mix_CloseAudio();
+  Quit();
 }
 
 char * c_read_file(const char * f_name, int * err, size_t * f_size) {
@@ -454,150 +444,42 @@ const char *get_filename_ext(const char *filename) {
     return dot + 1;
 }
 
-PLATFORM_CREATE_SHADER_PROGRAM(CreateShaderProgram)
-{
-  ShaderProgram program;
-  program.id = glCreateProgram();
-  va_list vl;
-  Shader shader;
-  va_start(vl, shader_count);
-  for (int i=0; i<shader_count; i++) {
-    shader = va_arg(vl, Shader);
-    glAttachShader(program.id, shader.id);
-  }
-  va_end(vl);
-  glLinkProgram(program.id);
-  glUseProgram(program.id);
-  return program;
-}
-
-PLATFORM_LOAD_SHADER(LoadShader)
-{
-  int path_length;
-  size_t path_size;
-  char *path;
-  char *shader_source;
-  const char *_shader_source;
-  int err;
-  size_t f_size;
-  const char *ext;
-  Shader shader;
-  GLint status;
-  char shader_error[512];
-  
-  path_length = strlen(SHADERS_DIR)+strlen(filename) + 1; // +1 for the "/"
-  path_size = path_length * sizeof(char)+ 1; // +1 for null terminator
-  path = (char *) malloc(path_size);
-  snprintf(path, path_size, "%s/%s", SHADERS_DIR, filename);
-  shader_source = c_read_file(path, &err, &f_size);
-  ext = get_filename_ext(filename);
-  if (err) {
-    Die("file not found: %s\n", path);
-  }
-  if (0 == strncmp(ext, "vert", 4)) {
-    shader.id = glCreateShader(GL_VERTEX_SHADER);
-  } else if (0 == strncmp(ext, "frag", 4)) {
-    shader.id = glCreateShader(GL_FRAGMENT_SHADER);
-  } else if (0 == strncmp(ext, "geom", 4)) {
-    shader.id = glCreateShader(GL_GEOMETRY_SHADER);
-  } else if (0 == strncmp(ext, "tesc", 4)) {
-    shader.id = glCreateShader(GL_TESS_CONTROL_SHADER);
-  } else if (0 == strncmp(ext, "tese", 4)) {
-    shader.id = glCreateShader(GL_TESS_EVALUATION_SHADER);
-  } else if (0 == strncmp(ext, "comp", 4)) {
-    shader.id = glCreateShader(GL_COMPUTE_SHADER);
-  } else {
-    Die("unknown shader extension: %s; must be (frag, geom, tesc, tese, or comp)\n", ext);
-  }
-  _shader_source = shader_source;
-  glShaderSource(shader.id, 1, &_shader_source, NULL);
-  glCompileShader(shader.id);
-  glGetShaderiv(shader.id, GL_COMPILE_STATUS, &status);
-  if (GL_TRUE != status) {
-    glGetShaderInfoLog(shader.id, 512, NULL, shader_error);
-    Die("shader %s failed: \n%s\n", filename, shader_error);
-  }
-  free(shader_source);
-  free(path);
-  return shader;
-}
-
-PLATFORM_ATTACH_SHADER(AttachShader) {
-  glAttachShader(program.id, shader.id);
-  glLinkProgram(program.id);
-}
-
-PLATFORM_DETACH_SHADER(DetachShader) { glDetachShader(program.id, shader.id); }
-
-PLATFORM_DELETE_SHADER(DeleteShader) { glDeleteShader(shader.id); }
 
 PLATFORM_DRAW_BOX(DrawBox)
 {
-  /*
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_BLEND);
-  glBegin(GL_QUADS);
-    glColor4f(r, g, b, a);
-    glVertex2f(x, y);
-    glVertex2f(x+width, y);
-    glVertex2f(x+width, y+height);
-    glVertex2f(x, y+height);
-  glEnd();
-  glDisable(GL_BLEND);
-  */
-
-  float half_width = 800 * 0.5f;
-  float half_height = 600 * 0.5f;
-  x = x - half_width;
-  y = y - half_height;
-  float x0 = x/half_width;
-  float y0 = y/half_height;
-  float x1 = (x+width)/half_width;
-  float y1 = (y+height)/half_height;
-  float vertices[] = {
-    x0, y1, r, g, b, a,
-    x1, y1, r, g, b, a,
-    x1, y0, r, g, b, a,
-    x0, y0, r, g, b, a,
-  };
-
-  //glBindVertexArray(state.vao);
-  glBindBuffer(GL_ARRAY_BUFFER, state.vbo);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-  glUseProgram(program.id);
-  GLint posAttrib = glGetAttribLocation(program.id, "position");
-  glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(posAttrib);
-
-  GLint inColor = glGetAttribLocation(program.id, "color");
-  glVertexAttribPointer(inColor, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(2*sizeof(float)));
-  glEnableVertexAttribArray(inColor);
-  
-  glDrawArrays(GL_QUADS, 0, 4);
+  SDL_SetRenderDrawColor(state.renderer, r, g, b, a);
+  if (fill) {
+    SDL_RenderFillRectF(state.renderer, (SDL_FRect *)rect);
+  } else { 
+    SDL_RenderDrawRectF(state.renderer, (SDL_FRect *)rect);
+  }
+  SDL_SetRenderDrawColor(state.renderer, 0, 0, 0, 0);
 }
 
-void opengl_load_texture(int textureIndex, const char *imagePath)
+
+PLATFORM_DRAW_BOXES(DrawBoxes)
 {
-  SDL_Surface* newSurface = IMG_Load(imagePath);
-  if (!newSurface) {
-    Die("Failed to load the image: %s", IMG_GetError());
+  SDL_SetRenderDrawColor(state.renderer, r, g, b, a);
+  if (fill) {
+    SDL_RenderFillRectsF(state.renderer, (SDL_FRect*)rects, count);
+  } else {
+    SDL_RenderDrawRectsF(state.renderer, (SDL_FRect*)rects, count);
   }
-  int mode = GL_RGB;
-  if (newSurface->format->BytesPerPixel == 4) {
-    mode = GL_RGBA;
+  SDL_SetRenderDrawColor(state.renderer, 0, 0, 0, 0);
+}
+
+void sdl_create_texture(char *image_path, unsigned int texture_id) {
+  SDL_Surface* surface = IMG_Load(image_path);
+  if (texture_id >= MAX_SURFACES) {
+    printf("texture ID exceeds range: 0 < %d < %d", texture_id, MAX_SURFACES);
   }
-  glGenTextures(1, &state.textures[textureIndex].textureID);
-  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
-  glTexImage2D(GL_TEXTURE_2D,
-	       0, mode,
-	       newSurface->w, newSurface->h,
-	       0, mode,
-	       GL_UNSIGNED_BYTE, newSurface->pixels);
-  
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  if (state.textures[texture_id] != NULL) {
+    // free this texture
+    SDL_DestroyTexture(state.textures[texture_id]);
+    state.textures[texture_id] = NULL;
+  }
+  state.textures[texture_id] = SDL_CreateTextureFromSurface(state.renderer, surface);
+  SDL_FreeSurface(surface);
 }
 
 PLATFORM_ENSURE_IMAGE(EnsureImage)
@@ -606,55 +488,16 @@ PLATFORM_ENSURE_IMAGE(EnsureImage)
   size_t imagePathSize = imagePathLength * sizeof(char)+ 1; // +1 for null terminator
   char *imagePath = (char *) malloc(imagePathSize);
   snprintf(imagePath, imagePathSize, "%s/%s", IMAGES_DIR, filename);
-  //opengl_load_texture(textureID, imagePath);
+  sdl_create_texture(imagePath, texture_id);
   free(imagePath);
+  return ;
 }
 
 PLATFORM_DRAW_TEXTURE(DrawTexture)
 {
-  /*
-  float texW, texH;
-  glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
-  glGetTexLevelParameterfv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
-
-  float texCoordX0 = 0;
-  float texCoordX1 = sprite_w;
-  float texCoordY0 = 0;
-  float texCoordY1 = sprite_h;
-  if (sprite_x != 0 && sprite_x != texW) {
-    texCoordX0 = sprite_x / texW;
-    texCoordX1 = (sprite_x + sprite_w) / texW;
-  }
-  if (sprite_y != 0 && sprite_y != texH) {
-    texCoordY0 = sprite_y / texH;
-    texCoordY1 = (sprite_y + sprite_h) / texH;
-  }
-  
-  glEnable(GL_TEXTURE_2D);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  glBindTexture(GL_TEXTURE_2D, state.textures[textureIndex].textureID);
-  glBegin(GL_QUADS);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    glTexCoord2f(texCoordX0, texCoordY1); glVertex3f(x, y, 0);
-    glTexCoord2f(texCoordX1, texCoordY1); glVertex3f(x + width, y, 0);
-    glTexCoord2f(texCoordX1, texCoordY0); glVertex3f(x + width, y + height, 0);
-    glTexCoord2f(texCoordX0, texCoordY0); glVertex3f(x, y + height, 0);
-  glEnd();
-
-  glDisable(GL_BLEND);
-  glDisable(GL_TEXTURE_2D);
-  */
-}
-
-PLATFORM_QUIT(QuitGame) {
-  SDLNet_Quit();
-  Mix_CloseAudio();
-  for(int i=0; i<state.window_count; i++) { 
-    SDL_GL_DeleteContext(state.gl_context[i]);
-  }
-  Quit();
+  SDL_Rect srcrect = {sprite_x, sprite_y, sprite_w, sprite_h};
+  SDL_Rect dstrect = {x, y, width, height};
+  SDL_RenderCopy(state.renderer, state.textures[texture_index], &srcrect, &dstrect);
 }
 
 PLATFORM_CREATE_WINDOW(CreateWindow) {
@@ -665,22 +508,16 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   
   SDL_Window *new_win = SDL_CreateWindow(title,
 					 x, y, width, height,
-					 SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);  
+					 SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
   if(!new_win) {
     Die("Failed to create window: %s\n", SDL_GetError());
   }
   state.windows[state.window_count] = new_win;
-  // using OpenGL render context
-  state.gl_context[state.window_count] = SDL_GL_CreateContext(state.windows[0]); 
-  glewExperimental = GL_TRUE;
-  glewInit();
+  
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   index = state.window_count;
   state.window_count++;
-  if (0 == state.vao)
-    glGenVertexArrays(1, &state.vao);
-  if (0 == state.vbo)
-    glGenBuffers(1, &state.vbo);
+  state.renderer = SDL_CreateRenderer(new_win, -1, SDL_RENDERER_ACCELERATED);
   return index;
 }
 
@@ -794,8 +631,8 @@ void musicDone() {
 
 PLATFORM_PLAY_MUSIC(PlayMusic)
 {
-  printf("play %d fade(%d), loops(%d), position(%f), volume(%d)\n",
-	 track, fade, loops, position, volume);
+  printf("play %d fade(%d), loops(%d), position(%f), volume(%d), resume(%d)\n",
+	 track, fade, loops, position, volume, resume);
   Mix_VolumeMusic(volume);
   if (fade) {
     if (position > 0) {
@@ -1015,13 +852,8 @@ PlatformAPI GetPlatformAPI()
 {
     PlatformAPI api = {};
     // Draw
-    api.PlatformSetProjection = SetProjection;
-    api.PlatformCreateShaderProgram = CreateShaderProgram;
-    api.PlatformLoadShader = LoadShader;
-    api.PlatformAttachShader = AttachShader;
-    api.PlatformDetachShader = DetachShader;
-    api.PlatformDeleteShader = DeleteShader;
     api.PlatformDrawBox = DrawBox;
+    api.PlatformDrawBoxes = DrawBoxes;
     api.PlatformDrawTexture = DrawTexture;
     api.PlatformEnsureImage = EnsureImage;
     api.PlatformScreenshot = Screenshot;
@@ -1437,12 +1269,19 @@ void GameLoop()
     
     state.game_code.game_update(1.0f/60.0f);
 
+    /*
     glClear(GL_COLOR_BUFFER_BIT);
     glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
+    */
     state.game_code.game_render();
+    /*
     for (int w = 0; w < state.window_count; w++) {
       SDL_GL_SwapWindow(state.windows[w]);
     }
+    */
+    SDL_SetRenderDrawColor(state.renderer, floor(255*0.3), floor(255*0.3), floor(255*0.3), 1);
+    SDL_SetRenderDrawBlendMode(state.renderer, SDL_BLENDMODE_BLEND);
+    SDL_RenderPresent(state.renderer);
     
     // RELOAD
     time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
@@ -1505,11 +1344,8 @@ int main(int argc, char *argv[])
   state.screen.w = 800;
   state.screen.h = 600;
   CreateWindow("Perplexistential Sandbox", 300, 1400, state.screen.w, state.screen.h);
+  
   // get version info
-  const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
-  const GLubyte* version = glGetString(GL_VERSION); // version as a string
-  printf("Renderer: %s\n", renderer);
-  printf("OpenGL version supported %s\n", version);
   // game state init
   state.game_memory = AllocateGameMemory();
   state.game_code = LoadGameCode(GAME_LIB);

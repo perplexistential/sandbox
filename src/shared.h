@@ -542,17 +542,6 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
   (type *)GameAllocateMemory(memory, sizeof(type))
 
 typedef struct {
-  uint32_t id;
-} Shader;
-
-typedef struct {
-  uint32_t id;
-} ShaderProgram;
-
-#define PLATFORM_CREATE_SHADER_PROGRAM(n) ShaderProgram n(int shader_count, ...)
-typedef PLATFORM_CREATE_SHADER_PROGRAM(PlatformCreateShaderProgramFn);
-
-typedef struct {
   uint32_t texture_id;
   uint8_t w;
   uint8_t h;
@@ -568,25 +557,19 @@ typedef struct {
   uint8_t count;
 } SpriteSheet;
 
-#define PLATFORM_LOAD_SHADER(n) Shader n(const char *filename)
-typedef PLATFORM_LOAD_SHADER(PlatformLoadShaderFn);
-
-#define PLATFORM_ATTACH_SHADER(n)                                              \
-  void n(ShaderProgram program, Shader shader)
-typedef PLATFORM_ATTACH_SHADER(PlatformAttachShaderFn);
-
-#define PLATFORM_DETACH_SHADER(n)                                              \
-  void n(ShaderProgram program, Shader shader)
-typedef PLATFORM_DETACH_SHADER(PlatformDetachShaderFn);
-
-#define PLATFORM_DELETE_SHADER(n) void n(Shader shader)
-typedef PLATFORM_DELETE_SHADER(PlatformDeleteShaderFn);
+typedef struct {
+  float x, y;
+  float w, h;
+} Rect;
 
 // Demonstration boxes and/or particles
 #define PLATFORM_DRAW_BOX(n)                                                   \
-  void n(float x, float y, float width, float height, float r, float g,        \
-         float b, float a, ShaderProgram program)
+  void n(Rect *rect, float r, float g, float b, float a, bool fill)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
+
+#define PLATFORM_DRAW_BOXES(n)			\
+  void n(Rect *rects, unsigned int count, float r, float g, float b, float a, bool fill)
+typedef PLATFORM_DRAW_BOXES(PlatformDrawBoxesFn);
 
 // Image and Sprite loading
 #define MAX_SURFACES 100
@@ -678,12 +661,8 @@ typedef struct
 {
   // Draw
   PlatformSetProjectionFn *PlatformSetProjection;
-  PlatformCreateShaderProgramFn *PlatformCreateShaderProgram;
-  PlatformLoadShaderFn *PlatformLoadShader;
-  PlatformAttachShaderFn *PlatformAttachShader;
-  PlatformDetachShaderFn *PlatformDetachShader;
-  PlatformDeleteShaderFn *PlatformDeleteShader;
   PlatformDrawBoxFn *PlatformDrawBox;
+  PlatformDrawBoxesFn *PlatformDrawBoxes;
   PlatformEnsureImageFn *PlatformEnsureImage;
   PlatformDrawTextureFn *PlatformDrawTexture;
   PlatformScreenshotFn *PlatformScreenshot;
